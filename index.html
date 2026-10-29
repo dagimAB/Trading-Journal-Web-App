@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark light" />
+  <title>ICT Backtest Journal</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1115'/%3E%3Cpath d='M7 23l6-7 4 3 8-10' stroke='%2357c7a0' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="db-error" class="banner banner-error" hidden></div>
+  <div id="backup-reminder" class="banner banner-soft" hidden></div>
+  <div id="blind-banner" class="banner banner-blind" hidden></div>
+
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="22" height="22"><path d="M7 23l6-7 4 3 8-10" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="brand-text">
+        <h1>ICT Backtest Journal</h1>
+        <p>Manual replay research · R-based statistics</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button id="btn-blind" class="btn btn-ghost" type="button" title="Blind backtest mode (B)">
+        <span class="dot" aria-hidden="true"></span> Blind Backtest
+      </button>
+      <button id="btn-templates" class="btn btn-ghost" type="button">Exit Plans</button>
+      <button id="btn-data" class="btn btn-ghost" type="button">Import / Export</button>
+      <button id="btn-settings" class="btn btn-ghost" type="button">Settings</button>
+      <button id="btn-theme" class="btn btn-icon" type="button" title="Toggle dark / light" aria-label="Toggle theme">
+        <span id="theme-icon">◐</span>
+      </button>
+      <button id="btn-new-trade" class="btn btn-primary" type="button" title="New trade (Ctrl+N)">
+        <span aria-hidden="true">+</span> New Trade
+      </button>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <section class="dashboard" id="dashboard" aria-label="Performance dashboard">
+      <div class="dash-head">
+        <h2>Performance</h2>
+        <div class="dash-meta">
+          <span id="filter-summary" class="muted">No trades recorded yet</span>
+          <span id="low-sample-flag" class="pill pill-warn" hidden>Low sample size</span>
+        </div>
+      </div>
+      <div id="dash-cards" class="dash-cards"></div>
+      <div id="dash-secondary" class="dash-secondary"></div>
+    </section>
+
+    <section class="curve-panel" id="curve-panel" aria-label="Equity curve">
+      <div class="panel-head">
+        <h2>Equity Curve</h2>
+        <div class="panel-head-right">
+          <div id="curve-stats" class="curve-stats"></div>
+          <div class="segmented" role="group" aria-label="Curve ordering">
+            <button type="button" data-order="tradeNumber" class="seg active">Recorded order</button>
+            <button type="button" data-order="chronological" class="seg">Chronological</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="equity-chart" height="220" aria-label="Cumulative R by trade"></canvas>
+      </div>
+      <div class="chart-wrap chart-wrap-small">
+        <canvas id="drawdown-chart" height="96" aria-label="Drawdown in R"></canvas>
+      </div>
+    </section>
+
+    <section class="trade-section" aria-label="Trades">
+      <div class="filter-bar">
+        <div class="quick-filters" id="quick-filters" role="group" aria-label="Quick filters">
+          <button type="button" class="chip active" data-quick="all">All</button>
+          <button type="button" class="chip" data-quick="win">Wins</button>
+          <button type="button" class="chip" data-quick="loss">Losses</button>
+          <button type="button" class="chip" data-quick="breakeven">BE</button>
+          <span class="quick-divider" aria-hidden="true"></span>
+          <label class="inline-field">
+            MFE ≥
+            <select id="quick-mfe-atleast" aria-label="Minimum MFE">
+              <option value="">—</option>
+              <option value="1">1R</option>
+              <option value="2">2R</option>
+              <option value="3">3R</option>
+              <option value="4">4R</option>
+              <option value="6">6R</option>
+              <option value="9">9R</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="filter-search">
+          <input id="search-input" type="search" placeholder="Search notes, setups, instruments…  (Ctrl+F)" autocomplete="off" />
+        </div>
+
+        <div class="filter-selects">
+          <select id="filter-instrument" aria-label="Filter by instrument"><option value="">All instruments</option></select>
+          <select id="filter-session" aria-label="Filter by session"><option value="">All sessions</option></select>
+          <select id="filter-result" aria-label="Filter by result">
+            <option value="">All results</option>
+            <option value="win">Wins</option>
+            <option value="loss">Losses</option>
+            <option value="breakeven">Breakeven</option>
+            <option value="incomplete">Incomplete</option>
+          </select>
+          <select id="filter-dataset" aria-label="Filter by dataset"><option value="">All datasets</option></select>
+          <button id="btn-advanced-filters" class="btn btn-ghost btn-small" type="button" aria-expanded="false">
+            Filters <span id="filter-badge" class="badge" hidden>0</span>
+          </button>
+        </div>
+
+        <div id="advanced-filters" class="popover filter-popover" hidden>
+          <div class="popover-title">Advanced filters</div>
+          <div class="filter-grid">
+            <label>From date<input type="date" id="filter-date-from" /></label>
+            <label>To date<input type="date" id="filter-date-to" /></label>
+            <label>Setup<select id="filter-setup"><option value="">Any setup</option></select></label>
+            <label>Quality<select id="filter-quality">
+              <option value="">Any quality</option>
+              <option value="A+">A+</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+            </select></label>
+            <label>Status<select id="filter-status">
+              <option value="">Any status</option>
+              <option value="completed">Completed</option>
+              <option value="incomplete">Incomplete</option>
+            </select></label>
+            <label>Exit Plan<select id="filter-exit-plan"><option value="">Any Exit Plan</option></select></label>
+            <label>MFE min<input type="number" step="0.1" id="filter-mfe-min" /></label>
+            <label>MFE max<input type="number" step="0.1" id="filter-mfe-max" /></label>
+            <label>MAE min<input type="number" step="0.1" id="filter-mae-min" /></label>
+            <label>MAE max<input type="number" step="0.1" id="filter-mae-max" /></label>
+            <label>Final R min<input type="number" step="0.01" id="filter-final-min" /></label>
+            <label>Final R max<input type="number" step="0.01" id="filter-final-max" /></label>
+          </div>
+          <div class="popover-actions">
+            <button type="button" class="btn btn-ghost btn-small" id="btn-clear-filters">Clear all filters</button>
+            <button type="button" class="btn btn-primary btn-small" id="btn-close-filters">Done</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-toolbar">
+        <div class="toolbar-left">
+          <span id="table-count" class="muted"></span>
+          <span id="selection-info" class="muted" hidden></span>
+        </div>
+        <div class="toolbar-right">
+          <button id="btn-apply-template" class="btn btn-ghost btn-small" type="button" disabled>Apply Exit Plan</button>
+          <button id="btn-columns" class="btn btn-ghost btn-small" type="button" aria-expanded="false">Columns</button>
+          <button id="btn-clear-selection" class="btn btn-ghost btn-small" type="button" hidden>Clear selection</button>
+        </div>
+      </div>
+
+      <div id="columns-popover" class="popover columns-popover" hidden>
+        <div class="popover-title">Visible columns</div>
+        <div id="columns-list" class="columns-list"></div>
+        <div class="popover-actions">
+          <button type="button" class="btn btn-ghost btn-small" id="btn-columns-reset">Reset defaults</button>
+          <button type="button" class="btn btn-primary btn-small" id="btn-columns-close">Done</button>
+        </div>
+      </div>
+
+      <div id="table-scroll" class="table-scroll">
+        <table id="trade-table" class="trade-table" aria-label="Trade journal">
+          <colgroup id="trade-colgroup"></colgroup>
+          <thead id="trade-thead"></thead>
+          <tbody id="trade-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="empty-state" class="empty-state" hidden>
+        <h3>No trades recorded yet.</h3>
+        <p>Start your first blind backtest.</p>
+        <div class="empty-actions">
+          <button type="button" class="btn btn-primary" id="btn-empty-new">+ New Trade</button>
+          <button type="button" class="btn btn-ghost" id="btn-empty-demo">Load Demo Data</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="analytics" id="analytics" aria-label="Analytics">
+      <div class="panel-head">
+        <h2>Analytics</h2>
+        <div class="panel-head-right">
+          <button id="btn-edit-thresholds" class="btn btn-ghost btn-small" type="button">Thresholds</button>
+        </div>
+      </div>
+      <div id="analytics-tabs" class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="session" role="tab">Session</button>
+        <button type="button" class="tab" data-tab="instrument" role="tab">Instrument</button>
+        <button type="button" class="tab" data-tab="direction" role="tab">Direction</button>
+        <button type="button" class="tab" data-tab="setup" role="tab">Setup</button>
+        <button type="button" class="tab" data-tab="quality" role="tab">Quality</button>
+        <button type="button" class="tab" data-tab="mfe" role="tab">MFE / MAE</button>
+        <button type="button" class="tab" data-tab="targets" role="tab">Target Hits</button>
+        <button type="button" class="tab" data-tab="comparison" role="tab">Exit Plan Comparison</button>
+      </div>
+      <div id="analytics-body" class="analytics-body"></div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div id="footer-status" class="muted"></div>
+    <div class="footer-actions">
+      <button id="btn-footer-demo" class="btn btn-ghost btn-small" type="button">Demo data</button>
+      <button id="btn-footer-export" class="btn btn-ghost btn-small" type="button">Backup JSON</button>
+      <span id="footer-version" class="muted">v1.0</span>
+    </div>
+  </footer>
+
+  <div id="modal-root"></div>
+  <div id="popover-root"></div>
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+  <input type="file" id="import-file" accept=".json,application/json" hidden />
+
+  <script src="vendor/chart.umd.js"></script>
+  <script src="analytics.js"></script>
+  <script src="db.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
