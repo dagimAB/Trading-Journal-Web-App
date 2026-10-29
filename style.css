@@ -1592,6 +1592,12 @@ td .inline-error {
   font-size: 12.5px;
 }
 
+/* Prevent the full-width field rule from stretching toggle knobs */
+.field .switch input {
+  width: 30px;
+  flex: none;
+}
+
 .field.has-error input,
 .field.has-error select,
 .field.has-error textarea {

@@ -1861,7 +1861,7 @@
 
     const footer = h("div", { class: "modal-foot" });
     footer.appendChild(h("button", { type: "button", class: "btn btn-ghost", text: "Cancel", onclick: () => entry.close("cancel") }));
-    const saveBtn = h("button", { type: "submit", class: "btn btn-primary", text: isNew ? "Create trade" : "Save changes" });
+    const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: isNew ? "Create trade" : "Save changes", onclick: () => form.requestSubmit() });
     footer.appendChild(saveBtn);
 
     const entry = openModal({
@@ -2004,7 +2004,7 @@
 
     const footer = h("div", { class: "modal-foot" });
     footer.appendChild(h("button", { type: "button", class: "btn btn-ghost", text: "Cancel", onclick: () => entry.close("cancel") }));
-    const saveBtn = h("button", { type: "submit", class: "btn btn-primary", text: "Save result" });
+    const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: "Save result", onclick: () => form.requestSubmit() });
     footer.appendChild(saveBtn);
 
     const entry = openModal({
@@ -2333,7 +2333,7 @@
     form.querySelector("[data-plan-host]").appendChild(editor.element);
     const footer = h("div", { class: "modal-foot" });
     footer.appendChild(h("button", { type: "button", class: "btn btn-ghost", text: "Cancel", onclick: () => entry.close("cancel") }));
-    const saveBtn = h("button", { type: "submit", class: "btn btn-primary", text: isNew ? "Create plan" : "Save plan" });
+    const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: isNew ? "Create plan" : "Save plan", onclick: () => form.requestSubmit() });
     footer.appendChild(saveBtn);
     const entry = openModal({
       title: isNew ? "New Exit Plan" : "Edit Exit Plan",
@@ -2438,7 +2438,7 @@
 
     const footer = h("div", { class: "modal-foot" });
     footer.appendChild(h("button", { type: "button", class: "btn btn-ghost", text: "Cancel", onclick: () => entry.close("cancel") }));
-    const saveBtn = h("button", { type: "submit", class: "btn btn-primary", text: "Save settings" });
+    const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: "Save settings", onclick: () => form.requestSubmit() });
     footer.appendChild(saveBtn);
     const entry = openModal({
       title: "Settings",
