@@ -1521,7 +1521,7 @@
     if (firstBad) firstBad.scrollIntoView({ block: "center", behavior: "smooth" });
   }
 
-  async function imageFileToScreenshot(file) {
+  async function imageFileToBase64(file) {
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
@@ -1548,7 +1548,35 @@
       canvas.getContext("2d").drawImage(image, 0, 0, width, height);
       output = canvas.toDataURL("image/jpeg", 0.82);
     }
-    return { dataUrl: output, name: file.name, width, height, size: Math.round((output.length * 3) / 4) };
+    // Return just the base64 part (strip the data:...;base64, prefix)
+    return { base64: output.split(",")[1], name: file.name, width, height };
+  }
+
+  async function uploadToImgBB(base64, name) {
+    const apiKey = model && model.settings && model.settings.imgbbApiKey;
+    if (!apiKey) throw new Error("ImgBB API key not set. Go to Settings → ImgBB API key.");
+    const form = new FormData();
+    form.append("image", base64);
+    if (name) form.append("name", name.replace(/\.[^.]+$/, "")); // strip extension
+    const response = await fetch("https://api.imgbb.com/1/upload?key=" + encodeURIComponent(apiKey), { method: "POST", body: form });
+    if (!response.ok) {
+      let detail = "";
+      try { const j = await response.json(); detail = j && j.error && j.error.message ? " — " + j.error.message : ""; } catch (_) {}
+      throw new Error("ImgBB upload failed (" + response.status + ")" + detail + ".");
+    }
+    const json = await response.json();
+    if (!json.success) throw new Error("ImgBB: " + (json.error && json.error.message ? json.error.message : "Upload rejected."));
+    return {
+      url: json.data.url,
+      displayUrl: json.data.display_url,
+      deleteUrl: json.data.delete_url,
+    };
+  }
+
+  async function imageFileToScreenshot(file) {
+    const { base64, name, width, height } = await imageFileToBase64(file);
+    const uploaded = await uploadToImgBB(base64, name);
+    return { url: uploaded.url, displayUrl: uploaded.displayUrl, deleteUrl: uploaded.deleteUrl, name, width, height };
   }
 
   function screenshotManager(tradeId, host) {
@@ -1560,10 +1588,13 @@
     host.appendChild(listEl);
     host.appendChild(h("div", { class: "inline-actions" }, addBtn, statusEl, input));
     addBtn.addEventListener("click", () => input.click());
+
     async function addFiles(files) {
       const list = Array.from(files || []).filter((file) => file && /^image\//.test(file.type));
       if (!list.length) return;
-      statusEl.textContent = "Processing…";
+      statusEl.className = "shot-uploading";
+      statusEl.textContent = list.length > 1 ? `Uploading ${list.length} images…` : "Uploading…";
+      addBtn.disabled = true;
       for (const file of list) {
         try {
           const shot = await imageFileToScreenshot(file);
@@ -1572,9 +1603,12 @@
           toast(err.message, { type: "error" });
         }
       }
+      statusEl.className = "hint";
       statusEl.textContent = "";
+      addBtn.disabled = false;
       render();
     }
+
     input.addEventListener("change", async () => {
       const files = Array.from(input.files || []);
       input.value = "";
@@ -1602,32 +1636,32 @@
       });
     }
 
+    function shotSrc(shot) {
+      return shot.displayUrl || shot.url || shot.dataUrl || "";
+    }
+
     function render() {
       listEl.innerHTML = "";
       state.existing.forEach((shot) => {
         if (state.removed.has(shot.id)) return;
+        const src = shotSrc(shot);
         const chip = h("div", { class: "shot-chip" });
-        chip.appendChild(h("img", { src: shot.dataUrl, alt: shot.name || "Screenshot" }));
+        chip.appendChild(h("img", { src, alt: shot.name || "Screenshot" }));
         chip.appendChild(h("span", { class: "shot-name", text: shot.name || "Screenshot" }));
         chip.appendChild(h("button", {
           type: "button", class: "icon-btn danger", title: "Remove screenshot", text: "×",
-          onclick: () => {
-            state.removed.add(shot.id);
-            render();
-          },
+          onclick: () => { state.removed.add(shot.id); render(); },
         }));
         listEl.appendChild(chip);
       });
       state.staged.forEach((shot) => {
+        const src = shotSrc(shot);
         const chip = h("div", { class: "shot-chip new" });
-        chip.appendChild(h("img", { src: shot.dataUrl, alt: shot.name }));
+        chip.appendChild(h("img", { src, alt: shot.name }));
         chip.appendChild(h("span", { class: "shot-name", text: shot.name }));
         chip.appendChild(h("button", {
           type: "button", class: "icon-btn danger", title: "Remove", text: "×",
-          onclick: () => {
-            state.staged = state.staged.filter((s) => s !== shot);
-            render();
-          },
+          onclick: () => { state.staged = state.staged.filter((s) => s !== shot); render(); },
         }));
         listEl.appendChild(chip);
       });
@@ -2214,13 +2248,14 @@
       }
       shotsEl.innerHTML = "";
       list.forEach((shot) => {
+        const src = shot.displayUrl || shot.url || shot.dataUrl || "";
         const fig = h("figure", { class: "detail-shot" });
-        const img = h("img", { src: shot.dataUrl, alt: shot.name || "Screenshot", loading: "lazy" });
+        const img = h("img", { src, alt: shot.name || "Screenshot", loading: "lazy" });
         img.addEventListener("click", () => {
           openModal({
             title: shot.name || "Screenshot",
             size: "modal-lg",
-            body: `<div class="lightbox"><img src="${esc(shot.dataUrl)}" alt="${esc(shot.name || "Screenshot")}"></div>`,
+            body: `<div class="lightbox"><img src="${esc(src)}" alt="${esc(shot.name || "Screenshot")}"></div>`,
           });
         });
         const cap = h("figcaption", { text: shot.name || "Screenshot" });
@@ -2389,6 +2424,12 @@
     const decimals = A.instrumentList(s).map((name) => `<label class="inline-setting"><span>${esc(name)}</span><input type="number" min="0" max="10" step="1" data-decimals="${esc(name)}" value="${A.instrumentDecimals(name, s)}"></label>`).join("");
     form.innerHTML = `
       <div class="form-section">
+        <h3>ImgBB</h3>
+        <div class="form-grid">
+          <div class="field span-2"><label>API key</label><input type="text" name="imgbbApiKey" value="${esc(s.imgbbApiKey || "")}" placeholder="Paste your key from imgbb.com/api"><span class="hint">Required for screenshot uploads. Get a free key at <a href="https://api.imgbb.com/" target="_blank" rel="noopener">api.imgbb.com</a>.</span></div>
+        </div>
+      </div>
+      <div class="form-section">
         <h3>Display</h3>
         <div class="form-grid">
           <div class="field"><label>Theme</label><select name="theme">${optionsHTML([{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }], s.theme)}</select></div>
@@ -2466,6 +2507,7 @@
         instrumentDecimals[input.dataset.decimals] = Number.isFinite(val) ? Math.max(0, Math.min(10, val)) : 2;
       });
       const next = Object.assign({}, s, {
+        imgbbApiKey: get("imgbbApiKey").value.trim(),
         theme: get("theme").value,
         lowSampleThreshold: Math.max(1, parseInt(get("lowSampleThreshold").value, 10) || 30),
         breakevenTolerance: Math.max(0, A.toNum(get("breakevenTolerance").value) || 0),
@@ -2656,8 +2698,8 @@
       A.validateExitPlan(tpl.levels).errors.slice(0, 3).forEach((issue) => errors.push(label + ": " + issue.message));
     });
     screenshots.forEach((shot, index) => {
-      if (!shot || typeof shot !== "object" || !shot.id || !shot.tradeId || typeof shot.dataUrl !== "string") {
-        errors.push(`Screenshot ${index + 1}: needs id, tradeId and dataUrl.`);
+      if (!shot || typeof shot !== "object" || !shot.id || !shot.tradeId || (typeof shot.dataUrl !== "string" && typeof shot.url !== "string")) {
+        errors.push(`Screenshot ${index + 1}: needs id, tradeId and either a dataUrl or url.`);
       } else if (!tradeIds.has(shot.tradeId)) {
         warnings.push(`Screenshot ${index + 1} references a trade not present in the file.`);
       }

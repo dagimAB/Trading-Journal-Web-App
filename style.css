@@ -2588,6 +2588,30 @@ td.editing {
   flex: none;
 }
 
+/* Upload progress hint */
+.shot-uploading {
+  font-size: 11px;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.shot-uploading::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Details panel */
 .details-backdrop {
   position: fixed;

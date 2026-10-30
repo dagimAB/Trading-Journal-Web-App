@@ -984,6 +984,7 @@
       onlyCompletePath: false,
       onlyCommonPlans: true,
       visibleAnalytics: "session",
+      imgbbApiKey: "0c9d4b5806991d483ea660e4aad06717",
     };
   }
 
