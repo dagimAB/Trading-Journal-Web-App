@@ -2424,12 +2424,6 @@
     const decimals = A.instrumentList(s).map((name) => `<label class="inline-setting"><span>${esc(name)}</span><input type="number" min="0" max="10" step="1" data-decimals="${esc(name)}" value="${A.instrumentDecimals(name, s)}"></label>`).join("");
     form.innerHTML = `
       <div class="form-section">
-        <h3>ImgBB</h3>
-        <div class="form-grid">
-          <div class="field span-2"><label>API key</label><input type="text" name="imgbbApiKey" value="${esc(s.imgbbApiKey || "")}" placeholder="Paste your key from imgbb.com/api"><span class="hint">Required for screenshot uploads. Get a free key at <a href="https://api.imgbb.com/" target="_blank" rel="noopener">api.imgbb.com</a>.</span></div>
-        </div>
-      </div>
-      <div class="form-section">
         <h3>Display</h3>
         <div class="form-grid">
           <div class="field"><label>Theme</label><select name="theme">${optionsHTML([{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }], s.theme)}</select></div>
@@ -2507,7 +2501,6 @@
         instrumentDecimals[input.dataset.decimals] = Number.isFinite(val) ? Math.max(0, Math.min(10, val)) : 2;
       });
       const next = Object.assign({}, s, {
-        imgbbApiKey: get("imgbbApiKey").value.trim(),
         theme: get("theme").value,
         lowSampleThreshold: Math.max(1, parseInt(get("lowSampleThreshold").value, 10) || 30),
         breakevenTolerance: Math.max(0, A.toNum(get("breakevenTolerance").value) || 0),
