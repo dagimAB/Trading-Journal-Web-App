@@ -147,6 +147,18 @@
     return "1:" + Number(n).toFixed(1) + "R";
   }
 
+  function parseRrVal(val) {
+    if (val === null || val === undefined || val === "") return null;
+    if (typeof val === "number" && !isNaN(val)) return val;
+    const str = String(val).trim();
+    const m = str.match(/1\s*:\s*(-?[\d.]+)/i) || str.match(/(-?[\d.]+)/);
+    if (m) {
+      const n = parseFloat(m[1]);
+      return isNaN(n) ? null : n;
+    }
+    return null;
+  }
+
   function parseISODate(dateStr) {
     if (typeof dateStr !== "string") return null;
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
@@ -427,25 +439,10 @@
     const levels = normalizeLevels(trade && trade.exitPlan);
     const hits = levelHitState(trade);
     const result = finalR(trade);
-    const slType = trade && trade.slType ? trade.slType : "wick";
-    const wickSlPrice = toNum(trade && trade.wickSlPrice) !== null
-      ? toNum(trade.wickSlPrice)
-      : (slType === "wick" || !trade || !trade.slType ? toNum(trade && trade.stopLoss) : null);
-    const bodySlPrice = toNum(trade && trade.bodySlPrice) !== null
-      ? toNum(trade.bodySlPrice)
-      : (slType === "body" ? toNum(trade && trade.stopLoss) : null);
-    let targetP = toNum(trade && trade.targetPrice);
-    if (targetP === null && levels.length) {
-      targetP = targetPriceForTrade(trade, levels[levels.length - 1].targetR);
-    }
-    const wickRr = toNum(trade && trade.wickRr) !== null ? toNum(trade.wickRr) : calcRr(trade && trade.entry, wickSlPrice, targetP);
-    const bodyRr = toNum(trade && trade.bodyRr) !== null ? toNum(trade.bodyRr) : calcRr(trade && trade.entry, bodySlPrice, targetP);
+    const wickRr = trade && trade.wickRr !== undefined && trade.wickRr !== null && trade.wickRr !== "" ? trade.wickRr : null;
+    const bodyRr = trade && trade.bodyRr !== undefined && trade.bodyRr !== null && trade.bodyRr !== "" ? trade.bodyRr : null;
     return {
       ...trade,
-      slType,
-      wickSlPrice,
-      bodySlPrice,
-      targetPrice: targetP,
       wickRr,
       bodyRr,
       day: dayOfWeek(trade && trade.date),
@@ -901,21 +898,23 @@
       const dist = Math.abs(entry - sl);
       if (dist <= 0) return null;
 
+      const wRrVal = parseRrVal(t.wickRr);
+      const bRrVal = parseRrVal(t.bodyRr);
       let wickSl = toNum(t.wickSlPrice);
       let bodySl = toNum(t.bodySlPrice);
 
-      if (wickSl === null && bodySl === null) {
-        wickSl = sl;
+      let ratio = 1.25;
+      if (wRrVal !== null && bRrVal !== null && wRrVal > 0) {
+        ratio = bRrVal / wRrVal;
+      } else if (wickSl !== null && bodySl !== null) {
+        const wDist = Math.abs(entry - wickSl);
+        const bDist = Math.abs(entry - bodySl);
+        if (wDist > 0 && bDist > 0) ratio = wDist / bDist;
+      } else {
         const bodyDist = dist * 0.75;
+        wickSl = sl;
         bodySl = dir === "Long" ? entry - bodyDist : entry + bodyDist;
-      } else if (wickSl === null) {
-        const bodyDist = Math.abs(entry - bodySl);
-        const wickDist = bodyDist * 1.333;
-        wickSl = dir === "Long" ? entry - wickDist : entry + wickDist;
-      } else if (bodySl === null) {
-        const wickDist = Math.abs(entry - wickSl);
-        const bodyDist = wickDist * 0.75;
-        bodySl = dir === "Long" ? entry - bodyDist : entry + bodyDist;
+        ratio = 1.333;
       }
 
       return {
@@ -923,6 +922,9 @@
         entry,
         direction: dir,
         slType: t.slType || "wick",
+        ratio,
+        wRrVal,
+        bRrVal,
         wickSl,
         bodySl,
       };
@@ -934,51 +936,65 @@
     let bodyRValues = [];
     const comparisonRows = [];
 
-    targetTrades.forEach(({ trade: t, entry, wickSl, bodySl, slType }) => {
-      const wickDist = Math.abs(entry - wickSl);
-      const bodyDist = Math.abs(entry - bodySl);
-      if (wickDist <= 0 || bodyDist <= 0) return;
-
-      const ratio = wickDist / bodyDist;
+    targetTrades.forEach(({ trade: t, entry, ratio, wRrVal, bRrVal, wickSl, bodySl, slType }) => {
       const maeR = toNum(t.tradePath && t.tradePath.mae);
       const execFinalR = finalR(t);
 
-      // 1. Evaluate Wick SL Model
       let wR = 0;
       let wStopped = false;
-      if (slType === "wick") {
-        wR = execFinalR;
-        wStopped = t.exitReason === "SL" || (maeR !== null && maeR >= 1.0) || execFinalR <= -0.99;
-      } else {
-        if (maeR !== null && maeR >= ratio) {
-          wR = -1.0;
-          wStopped = true;
-        } else if (t.exitReason === "SL" && (maeR === null || maeR < ratio)) {
-          wR = toNum(t.wickRr) !== null ? toNum(t.wickRr) : 0;
-          wStopped = false;
-        } else {
-          wR = execFinalR / ratio;
-          wStopped = false;
-        }
-      }
-
-      // 2. Evaluate Body SL Model
       let bR = 0;
       let bStopped = false;
-      if (slType === "body") {
-        bR = execFinalR;
-        bStopped = t.exitReason === "SL" || (maeR !== null && maeR >= 1.0) || execFinalR <= -0.99;
-      } else {
-        const bodyThresholdInWickR = 1.0 / ratio;
-        if (maeR !== null && maeR >= bodyThresholdInWickR) {
-          bR = -1.0;
-          bStopped = true;
-        } else if (t.exitReason === "SL") {
+
+      if (wRrVal !== null && bRrVal !== null) {
+        if (execFinalR > tol) {
+          wR = wRrVal;
+          bR = bRrVal;
+          if (maeR !== null && maeR >= 1.0 / ratio) {
+            bR = -1.0;
+            bStopped = true;
+          }
+        } else if (execFinalR < -tol) {
+          wR = -1.0;
+          wStopped = true;
           bR = -1.0;
           bStopped = true;
         } else {
-          bR = execFinalR * ratio;
-          bStopped = false;
+          wR = 0;
+          bR = 0;
+        }
+      } else {
+        // Fallback for price-derived evaluation
+        if (slType === "wick") {
+          wR = execFinalR;
+          wStopped = t.exitReason === "SL" || (maeR !== null && maeR >= 1.0) || execFinalR <= -0.99;
+        } else {
+          if (maeR !== null && maeR >= ratio) {
+            wR = -1.0;
+            wStopped = true;
+          } else if (t.exitReason === "SL" && (maeR === null || maeR < ratio)) {
+            wR = toNum(t.wickRr) !== null ? toNum(t.wickRr) : 0;
+            wStopped = false;
+          } else {
+            wR = execFinalR / ratio;
+            wStopped = false;
+          }
+        }
+
+        if (slType === "body") {
+          bR = execFinalR;
+          bStopped = t.exitReason === "SL" || (maeR !== null && maeR >= 1.0) || execFinalR <= -0.99;
+        } else {
+          const bodyThresholdInWickR = 1.0 / ratio;
+          if (maeR !== null && maeR >= bodyThresholdInWickR) {
+            bR = -1.0;
+            bStopped = true;
+          } else if (t.exitReason === "SL") {
+            bR = -1.0;
+            bStopped = true;
+          } else {
+            bR = execFinalR * ratio;
+            bStopped = false;
+          }
         }
       }
 
@@ -999,6 +1015,8 @@
 
       comparisonRows.push({
         trade: t,
+        wickRr: t.wickRr !== null && t.wickRr !== undefined ? t.wickRr : (wR ? formatRr(wR) : "—"),
+        bodyRr: t.bodyRr !== null && t.bodyRr !== undefined ? t.bodyRr : (bR ? formatRr(bR) : "—"),
         wickSlPrice: wickSl,
         bodySlPrice: bodySl,
         slType,
@@ -1318,8 +1336,8 @@
     if (key === "mfe") return toNum(trade.tradePath && trade.tradePath.mfe);
     if (key === "mae") return toNum(trade.tradePath && trade.tradePath.mae);
     if (key === "finalR" || key === "status") return finalR(trade);
-    if (key === "wickSl") return toNum(trade.wickSlPrice || (trade.slType === "wick" ? trade.stopLoss : null));
-    if (key === "bodySl") return toNum(trade.bodySlPrice || (trade.slType === "body" ? trade.stopLoss : null));
+    if (key === "wickSl") return parseRrVal(trade.wickRr);
+    if (key === "bodySl") return parseRrVal(trade.bodyRr);
     if (key === "direction") return trade.direction || "";
     if (key === "setup") return setupComponents(trade).join(", ");
     if (key === "instrument") return trade.instrument || "";
@@ -1483,14 +1501,11 @@
       }
       if (rand() < 0.05) finalROverride = clampNumber(rnd(-1, lastTarget), 2);
       if (rand() < 0.06) statusCompleted = false;
-      const slType = rand() > 0.4 ? "wick" : "body";
-      const dist = Math.abs(entry - stopLoss);
-      const bodyDist = clampNumber(dist * (0.68 + rand() * 0.12), decimals);
-      const wickSlPrice = slType === "wick" ? stopLoss : (direction === "Long" ? clampNumber(entry - dist * 1.35, decimals) : clampNumber(entry + dist * 1.35, decimals));
-      const bodySlPrice = slType === "body" ? stopLoss : (direction === "Long" ? clampNumber(entry - bodyDist, decimals) : clampNumber(entry + bodyDist, decimals));
       const targetP = targetPrice(entry, stopLoss, direction, lastTarget);
-      const wickRr = calcRr(entry, wickSlPrice, targetP);
-      const bodyRr = calcRr(entry, bodySlPrice, targetP);
+      const wickRNum = clampNumber(calcRr(entry, stopLoss, targetP) || 3.0, 1);
+      const bodyRNum = clampNumber(wickRNum * 1.25, 1);
+      const wickRr = formatRr(wickRNum);
+      const bodyRr = formatRr(bodyRNum);
       const trade = {
         id: "demo-" + i + "-" + Math.random().toString(36).slice(2, 8),
         tradeNumber: i + 1,
@@ -1507,10 +1522,6 @@
         setupQuality: pick(qualities),
         entry,
         stopLoss,
-        slType,
-        wickSlPrice,
-        bodySlPrice,
-        targetPrice: targetP,
         wickRr,
         bodyRr,
         riskR: rand() < 0.12 ? 0.5 : 1,
@@ -1615,6 +1626,7 @@
     compareSlOptimization,
     calcRr,
     formatRr,
+    parseRrVal,
     validateTrade,
     issuesFor,
     defaultExitPlan,

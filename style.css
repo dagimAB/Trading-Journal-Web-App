@@ -3369,62 +3369,6 @@ body.panels-hidden #analytics {
   border-radius: 5px;
 }
 
-/* Dual Stop-Loss (Wick vs Body) Modeling */
-.sl-input-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  background: var(--panel-2);
-  transition: border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.sl-input-card.is-active-sl {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 7%, var(--panel-2));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
-}
-
-.sl-rr-badge {
-  font-size: 10px;
-  font-family: var(--mono);
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 99px;
-}
-
-.sl-exec-badge {
-  font-size: 8.5px;
-  font-weight: 800;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  letter-spacing: 0.05em;
-  margin-right: 4px;
-  vertical-align: middle;
-  display: inline-block;
-}
-
-.sl-executed {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.sl-alt {
-  color: var(--muted);
-}
-
-.rr-tag {
-  font-size: 10px;
-  font-family: var(--mono);
-  color: var(--accent);
-  background: var(--panel-3);
-  padding: 1px 4px;
-  border-radius: 3px;
-  margin-left: 3px;
-  display: inline-block;
-}
 
 /* SL Optimization Analytics Panel */
 .sl-opt-summary-banner {

@@ -480,21 +480,34 @@ test("dual SL schema fields, calcRr, and formatRr", () => {
   assert.ok(wickCol, "Wick SL column exists");
   assert.ok(bodyCol, "Body SL column exists");
 
-  // trade decoration populates dual SL fields
-  const trade = baseTrade({
+  // trade decoration preserves manual dual SL fields (string, number, or null)
+  const tradeStr = baseTrade({
     entry: 100,
     stopLoss: 95,
-    slType: "wick",
-    wickSlPrice: 95,
-    bodySlPrice: 96,
-    targetPrice: 125,
+    wickRr: "1:6R",
+    bodyRr: "1:7.5R",
   });
-  const dec = A.decorate(trade);
-  assert.strictEqual(dec.slType, "wick");
-  assert.strictEqual(dec.wickSlPrice, 95);
-  assert.strictEqual(dec.bodySlPrice, 96);
-  assert.strictEqual(dec.wickRr, 5); // 25 / 5 = 5.0R
-  assert.strictEqual(dec.bodyRr, 6.25); // 25 / 4 = 6.25R
+  const decStr = A.decorate(tradeStr);
+  assert.strictEqual(decStr.wickRr, "1:6R");
+  assert.strictEqual(decStr.bodyRr, "1:7.5R");
+
+  const tradeNum = baseTrade({
+    entry: 100,
+    stopLoss: 95,
+    wickRr: 6,
+    bodyRr: 7.5,
+  });
+  const decNum = A.decorate(tradeNum);
+  assert.strictEqual(decNum.wickRr, 6);
+  assert.strictEqual(decNum.bodyRr, 7.5);
+
+  const tradeEmpty = baseTrade({
+    entry: 100,
+    stopLoss: 95,
+  });
+  const decEmpty = A.decorate(tradeEmpty);
+  assert.strictEqual(decEmpty.wickRr, null);
+  assert.strictEqual(decEmpty.bodyRr, null);
 });
 
 test("compareSlOptimization computes side-by-side metrics and expectancy difference", () => {

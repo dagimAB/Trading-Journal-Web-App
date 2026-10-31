@@ -5,7 +5,7 @@
   const RESULT_COLUMN_KEYS = ["mfe", "mae", "remainderExitR", "finalR", "status", "exitReason", "levelsHit", "pathComplete", "waypoints", "screenshot"];
   const INLINE_FIELDS = new Set([
     "date", "time", "session", "killzone", "instrument", "direction", "setup", "setupQuality",
-    "htfBias", "htfTimeframe", "entryTimeframe", "entry", "stopLoss", "wickSlPrice", "bodySlPrice", "targetPrice", "slType", "riskR", "mfe", "mae",
+    "htfBias", "htfTimeframe", "entryTimeframe", "entry", "stopLoss", "wickRr", "bodyRr", "riskR", "mfe", "mae",
     "remainderExitR", "finalR", "exitReason", "pathComplete", "waypoints", "dataset", "notes",
   ]);
 
@@ -161,26 +161,14 @@
       case "entry": return fmtPrice(trade.entry, trade);
       case "stopLoss": return fmtPrice(trade.stopLoss, trade);
       case "wickSl": {
-        const price = trade.wickSlPrice !== null && trade.wickSlPrice !== undefined
-          ? trade.wickSlPrice
-          : (trade.slType === "wick" || !trade.slType ? trade.stopLoss : null);
-        if (price === null || price === undefined) return '<span class="muted">—</span>';
-        const isExec = trade.slType === "wick" || !trade.slType;
-        const rr = trade.wickRr ? ` <span class="rr-tag">${esc(A.formatRr(trade.wickRr))}</span>` : "";
-        const badge = isExec ? '<span class="sl-exec-badge" title="Executed SL">EXEC</span>' : "";
-        const cls = isExec ? "sl-executed" : "sl-alt";
-        return `<span class="${cls}">${badge}${fmtPrice(price, trade)}${rr}</span>`;
+        const val = trade.wickRr;
+        if (val === null || val === undefined || val === "") return '<span class="muted">—</span>';
+        return esc(String(val));
       }
       case "bodySl": {
-        const price = trade.bodySlPrice !== null && trade.bodySlPrice !== undefined
-          ? trade.bodySlPrice
-          : (trade.slType === "body" ? trade.stopLoss : null);
-        if (price === null || price === undefined) return '<span class="muted">—</span>';
-        const isExec = trade.slType === "body";
-        const rr = trade.bodyRr ? ` <span class="rr-tag">${esc(A.formatRr(trade.bodyRr))}</span>` : "";
-        const badge = isExec ? '<span class="sl-exec-badge" title="Executed SL">EXEC</span>' : "";
-        const cls = isExec ? "sl-executed" : "sl-alt";
-        return `<span class="${cls}">${badge}${fmtPrice(price, trade)}${rr}</span>`;
+        const val = trade.bodyRr;
+        if (val === null || val === undefined || val === "") return '<span class="muted">—</span>';
+        return esc(String(val));
       }
       case "riskR": return A.formatNumber(trade.riskR, 2);
       case "exitPlan":
@@ -259,8 +247,8 @@
         ? ' title="Maximum favorable excursion on the unmanaged path before the original stop. Continue the replay until the stop would have been hit for a complete path."'
         : col.key === "finalR" ? ' title="Calculated from the Exit Plan. Click to set a manual override."'
         : col.key === "status" ? ' title="Trade Status (Win / Loss / Breakeven)"'
-        : col.key === "wickSl" ? ' title="Wick Stop-Loss Price & Calculated R:R"'
-        : col.key === "bodySl" ? ' title="Body Stop-Loss Price & Calculated R:R"' : "";
+        : col.key === "wickSl" ? ' title="Wick Stop-Loss R:R"'
+        : col.key === "bodySl" ? ' title="Body Stop-Loss R:R"' : "";
       const cellContent = col.key === "status" ? statusBadge(trade.finalR) : cellText(trade, col.key);
       return `<td class="num${right}${center}${sticky ? " sticky" : ""}"${style}${field}${title}>${cellContent}</td>`;
     }).join("");
@@ -1102,9 +1090,8 @@
             <thead>
               <tr>
                 <th>Trade</th>
-                <th>Executed</th>
-                <th class="num">Wick SL</th>
-                <th class="num">Body SL</th>
+                <th class="num">Wick SL (R:R)</th>
+                <th class="num">Body SL (R:R)</th>
                 <th class="num">Wick Outcome</th>
                 <th class="num">Body Outcome</th>
                 <th class="num">Net Δ (Body - Wick)</th>
@@ -1113,13 +1100,12 @@
             <tbody>
               ${opt.trades.slice(0, 30).map(r => `<tr>
                 <td class="mono">#${esc(r.trade.tradeNumber || r.trade.id)} ${esc(r.trade.instrument || '')}</td>
-                <td><span class="pill">${r.slType === 'body' ? 'Body' : 'Wick'}</span></td>
-                <td class="num">${fmtPrice(r.wickSlPrice, r.trade)}</td>
-                <td class="num">${fmtPrice(r.bodySlPrice, r.trade)}</td>
+                <td class="num">${esc(String(r.wickRr || "—"))}</td>
+                <td class="num">${esc(String(r.bodyRr || "—"))}</td>
                 <td class="num ${signedClass(r.wickR)}">${fmtSigned(r.wickR)}${r.wickStopped ? ' <span class="pill pill-loss">SL</span>' : ''}</td>
                 <td class="num ${signedClass(r.bodyR)}">${fmtSigned(r.bodyR)}${r.bodyStopped ? ' <span class="pill pill-loss">SL</span>' : ''}</td>
                 <td class="num ${signedClass(r.diffR)}"><b>${fmtSigned(r.diffR)}</b></td>
-              </tr>`).join('') || '<tr><td colspan="7" class="center muted">No trades to display.</td></tr>'}
+              </tr>`).join('') || '<tr><td colspan="6" class="center muted">No trades to display.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1657,10 +1643,6 @@
       setupQuality: "A",
       entry: null,
       stopLoss: null,
-      slType: "wick",
-      wickSlPrice: null,
-      bodySlPrice: null,
-      targetPrice: null,
       wickRr: null,
       bodyRr: null,
       riskR: 1,
@@ -2061,47 +2043,28 @@
             <input type="number" name="entry" step="any" value="${draft.entry === null || draft.entry === undefined ? "" : draft.entry}" data-price-decimals="${decimals}">
             <div class="field-errors" data-errors="entry"></div>
           </div>
-          <div class="field" data-wrap="targetPrice">
-            <label>Target Price</label>
-            <input type="number" name="targetPrice" step="any" value="${draft.targetPrice === null || draft.targetPrice === undefined ? "" : draft.targetPrice}" placeholder="Exit target (or from plan)" data-price-decimals="${decimals}">
-            <span class="hint">Target price for R:R calculations</span>
-          </div>
-          <div class="field" data-wrap="slType">
-            <label>Executed SL Placement <b class="req">*</b></label>
-            <div class="segmented" role="radiogroup" aria-label="Executed Stop Loss" style="margin-top:2px">
-              <button type="button" class="seg${(draft.slType || 'wick') === 'wick' ? ' active' : ''}" data-sl-type="wick">Wick SL</button>
-              <button type="button" class="seg${draft.slType === 'body' ? ' active' : ''}" data-sl-type="body">Body SL</button>
-            </div>
-            <input type="hidden" name="slType" value="${esc(draft.slType || 'wick')}">
-            <input type="hidden" name="stopLoss" value="${draft.stopLoss === null || draft.stopLoss === undefined ? '' : draft.stopLoss}">
-            <input type="hidden" name="wickRr" value="${draft.wickRr === null || draft.wickRr === undefined ? '' : draft.wickRr}">
-            <input type="hidden" name="bodyRr" value="${draft.bodyRr === null || draft.bodyRr === undefined ? '' : draft.bodyRr}">
+          <div class="field" data-wrap="stopLoss">
+            <label>Stop Loss <b class="req">*</b></label>
+            <input type="number" name="stopLoss" step="any" value="${draft.stopLoss === null || draft.stopLoss === undefined ? "" : draft.stopLoss}" data-price-decimals="${decimals}">
             <div class="field-errors" data-errors="stopLoss"></div>
           </div>
-        </div>
-        <div class="form-grid form-grid-3" style="margin-top:10px">
-          <div class="field sl-input-card${(draft.slType || 'wick') === 'wick' ? ' is-active-sl' : ''}" data-wrap="wickSlPrice">
-            <label style="display:flex;justify-content:space-between;align-items:center">
-              <span>Wick SL Price <b class="req">*</b></span>
-              <span class="pill pill-accent sl-rr-badge" data-wick-rr-badge>${draft.wickRr ? A.formatRr(draft.wickRr) : '1:—R'}</span>
-            </label>
-            <input type="number" name="wickSlPrice" step="any" value="${draft.wickSlPrice === null || draft.wickSlPrice === undefined ? (draft.slType === 'wick' || !draft.slType ? (draft.stopLoss !== null && draft.stopLoss !== undefined ? draft.stopLoss : '') : '') : draft.wickSlPrice}" placeholder="Wick stop level" data-price-decimals="${decimals}">
-            <span class="hint">Candle extreme wick stop</span>
-            <div class="field-errors" data-errors="wickSlPrice"></div>
-          </div>
-          <div class="field sl-input-card${draft.slType === 'body' ? ' is-active-sl' : ''}" data-wrap="bodySlPrice">
-            <label style="display:flex;justify-content:space-between;align-items:center">
-              <span>Body SL Price</span>
-              <span class="pill pill-accent sl-rr-badge" data-body-rr-badge>${draft.bodyRr ? A.formatRr(draft.bodyRr) : '1:—R'}</span>
-            </label>
-            <input type="number" name="bodySlPrice" step="any" value="${draft.bodySlPrice === null || draft.bodySlPrice === undefined ? (draft.slType === 'body' ? (draft.stopLoss !== null && draft.stopLoss !== undefined ? draft.stopLoss : '') : '') : draft.bodySlPrice}" placeholder="Body stop level" data-price-decimals="${decimals}">
-            <span class="hint">Candle body / close stop</span>
-            <div class="field-errors" data-errors="bodySlPrice"></div>
-          </div>
           <div class="field">
-            <label>Active SL Risk Distance</label>
+            <label>Risk Distance</label>
             <div class="static-readout" data-risk-distance>—</div>
-            <span class="hint" data-active-sl-label>Active: ${(draft.slType || 'wick') === 'body' ? 'Body SL' : 'Wick SL'}</span>
+          </div>
+        </div>
+        <div class="form-grid form-grid-2" style="margin-top:10px">
+          <div class="field" data-wrap="wickRr">
+            <label>Wick SL (R:R)</label>
+            <input type="text" name="wickRr" value="${draft.wickRr === null || draft.wickRr === undefined ? '' : esc(draft.wickRr)}" placeholder="e.g. 1:6R or 6">
+            <span class="hint">Manual Wick stop R:R</span>
+            <div class="field-errors" data-errors="wickRr"></div>
+          </div>
+          <div class="field" data-wrap="bodyRr">
+            <label>Body SL (R:R)</label>
+            <input type="text" name="bodyRr" value="${draft.bodyRr === null || draft.bodyRr === undefined ? '' : esc(draft.bodyRr)}" placeholder="e.g. 1:7.5R or 7.5">
+            <span class="hint">Manual Body stop R:R</span>
+            <div class="field-errors" data-errors="bodyRr"></div>
           </div>
         </div>
       </div>
@@ -2168,39 +2131,6 @@
     const timeInput = form.querySelector('[name="time"]');
     const sessionInput = form.querySelector('[name="session"]');
     const riskDistanceEl = form.querySelector("[data-risk-distance]");
-    const wickSlInput = form.querySelector('[name="wickSlPrice"]');
-    const bodySlInput = form.querySelector('[name="bodySlPrice"]');
-    const targetInput = form.querySelector('[name="targetPrice"]');
-    const slTypeInput = form.querySelector('[name="slType"]');
-    const wickRrInput = form.querySelector('[name="wickRr"]');
-    const bodyRrInput = form.querySelector('[name="bodyRr"]');
-    const wickRrBadge = form.querySelector("[data-wick-rr-badge]");
-    const bodyRrBadge = form.querySelector("[data-body-rr-badge]");
-    const activeSlLabel = form.querySelector("[data-active-sl-label]");
-    const wickCard = form.querySelector('[data-wrap="wickSlPrice"]');
-    const bodyCard = form.querySelector('[data-wrap="bodySlPrice"]');
-
-    form.querySelectorAll("[data-sl-type]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        form.querySelectorAll("[data-sl-type]").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        const type = btn.dataset.slType;
-        slTypeInput.value = type;
-        if (type === "wick") {
-          if (wickCard) wickCard.classList.add("is-active-sl");
-          if (bodyCard) bodyCard.classList.remove("is-active-sl");
-          if (activeSlLabel) activeSlLabel.textContent = "Active: Wick SL";
-          if (wickSlInput && wickSlInput.value) slInput.value = wickSlInput.value;
-        } else {
-          if (wickCard) wickCard.classList.remove("is-active-sl");
-          if (bodyCard) bodyCard.classList.add("is-active-sl");
-          if (activeSlLabel) activeSlLabel.textContent = "Active: Body SL";
-          if (bodySlInput && bodySlInput.value) slInput.value = bodySlInput.value;
-        }
-        updateRiskDistance();
-        planEditor.refresh();
-      });
-    });
 
     const shotHost = form.querySelector("[data-shots]");
     const shots = blind ? null : screenshotManager(isNew ? null : base.id, shotHost);
@@ -2266,15 +2196,6 @@
 
     function updateRiskDistance() {
       const entry = A.toNum(entryInput.value);
-      const slType = slTypeInput ? slTypeInput.value : "wick";
-      let wickSl = wickSlInput ? A.toNum(wickSlInput.value) : null;
-      let bodySl = bodySlInput ? A.toNum(bodySlInput.value) : null;
-
-      if (slType === "body") {
-        if (bodySl !== null) slInput.value = String(bodySl);
-      } else {
-        if (wickSl !== null) slInput.value = String(wickSl);
-      }
       const sl = A.toNum(slInput.value);
 
       const decimals = A.instrumentDecimals(form.querySelector('[name="instrument"]').value, model.settings);
@@ -2282,22 +2203,6 @@
         const val = A.toNum(input.value);
         if (val !== null && input !== document.activeElement) input.value = String(A.clampNumber(val, decimals));
       });
-
-      let targetPrice = targetInput ? A.toNum(targetInput.value) : null;
-      if (targetPrice === null && entry !== null && sl !== null && planEditor) {
-        const levels = planEditor.getLevels();
-        if (levels && levels.length) {
-          const lastTargetR = levels[levels.length - 1].targetR;
-          targetPrice = A.targetPrice(entry, sl, directionInput.value, lastTargetR);
-        }
-      }
-
-      const wickRr = A.calcRr(entry, wickSl !== null ? wickSl : sl, targetPrice);
-      const bodyRr = A.calcRr(entry, bodySl !== null ? bodySl : (slType === "body" ? sl : null), targetPrice);
-      if (wickRrBadge) wickRrBadge.textContent = A.formatRr(wickRr);
-      if (bodyRrBadge) bodyRrBadge.textContent = A.formatRr(bodyRr);
-      if (wickRrInput) wickRrInput.value = wickRr !== null ? String(wickRr) : "";
-      if (bodyRrInput) bodyRrInput.value = bodyRr !== null ? String(bodyRr) : "";
 
       if (entry === null || sl === null) {
         riskDistanceEl.textContent = "—";
@@ -2311,7 +2216,7 @@
       }
     }
 
-    [entryInput, slInput, wickSlInput, bodySlInput, targetInput, directionInput, form.querySelector('[name="instrument"]')].filter(Boolean).forEach((input) => {
+    [entryInput, slInput, directionInput, form.querySelector('[name="instrument"]')].filter(Boolean).forEach((input) => {
       const handler = () => {
         updateRiskDistance();
         planEditor.refresh();
@@ -2458,19 +2363,13 @@
     next.htfTimeframe = get("htfTimeframe").value;
     next.entryTimeframe = get("entryTimeframe").value;
     next.entry = A.toNum(get("entry").value);
-    next.slType = form.querySelector('[name="slType"]') ? form.querySelector('[name="slType"]').value : (draft.slType || "wick");
-    next.wickSlPrice = A.toNum(get("wickSlPrice") ? get("wickSlPrice").value : null);
-    next.bodySlPrice = A.toNum(get("bodySlPrice") ? get("bodySlPrice").value : null);
-    next.targetPrice = A.toNum(get("targetPrice") ? get("targetPrice").value : null);
-    next.stopLoss = A.toNum(get("stopLoss") ? get("stopLoss").value : null);
-    if (next.stopLoss === null) {
-      next.stopLoss = next.slType === "body" ? next.bodySlPrice : next.wickSlPrice;
-    }
-    if (next.wickSlPrice === null && (next.slType === "wick" || !next.slType)) {
-      next.wickSlPrice = next.stopLoss;
-    }
-    next.wickRr = A.toNum(form.querySelector('[name="wickRr"]') ? form.querySelector('[name="wickRr"]').value : null);
-    next.bodyRr = A.toNum(form.querySelector('[name="bodyRr"]') ? form.querySelector('[name="bodyRr"]').value : null);
+    next.stopLoss = A.toNum(get("stopLoss").value);
+    const wickEl = form.querySelector('[name="wickRr"]');
+    const bodyEl = form.querySelector('[name="bodyRr"]');
+    const wickVal = wickEl ? wickEl.value.trim() : "";
+    const bodyVal = bodyEl ? bodyEl.value.trim() : "";
+    next.wickRr = wickVal ? (A.toNum(wickVal) !== null ? A.toNum(wickVal) : wickVal) : null;
+    next.bodyRr = bodyVal ? (A.toNum(bodyVal) !== null ? A.toNum(bodyVal) : bodyVal) : null;
     next.riskR = A.toNum(get("riskR").value);
     next.notes = get("notes").value;
     next.dataset = get("dataset") ? get("dataset").value : "";
@@ -2666,9 +2565,9 @@
         <h3>Prices</h3>
         <div class="detail-metrics">
           <div><span>Entry</span><b>${fmtPrice(trade.entry, trade)}</b></div>
-          <div><span>Executed SL</span><b>${(trade.slType || "wick") === "body" ? "Body SL" : "Wick SL"} (${fmtPrice(trade.stopLoss, trade)})</b></div>
-          <div><span>Wick SL</span><b>${trade.wickSlPrice !== null && trade.wickSlPrice !== undefined ? fmtPrice(trade.wickSlPrice, trade) + (trade.wickRr ? " (" + A.formatRr(trade.wickRr) + ")" : "") : "—"}</b></div>
-          <div><span>Body SL</span><b>${trade.bodySlPrice !== null && trade.bodySlPrice !== undefined ? fmtPrice(trade.bodySlPrice, trade) + (trade.bodyRr ? " (" + A.formatRr(trade.bodyRr) + ")" : "") : "—"}</b></div>
+          <div><span>Stop Loss</span><b>${fmtPrice(trade.stopLoss, trade)}</b></div>
+          <div><span>Wick SL (R:R)</span><b>${trade.wickRr ? esc(String(trade.wickRr)) : "—"}</b></div>
+          <div><span>Body SL (R:R)</span><b>${trade.bodyRr ? esc(String(trade.bodyRr)) : "—"}</b></div>
           <div><span>Risk distance</span><b>${trade.rDistance === null ? "—" : fmtPrice(trade.rDistance, trade)}</b></div>
           <div><span>Exit Plan</span><b class="mono">${esc(A.planString(trade.exitPlan))}</b></div>
         </div>
