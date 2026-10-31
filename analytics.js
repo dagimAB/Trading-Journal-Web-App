@@ -1023,15 +1023,20 @@
 
   function instrumentList(settings) {
     const custom = (settings && settings.customInstruments) || [];
-    return Array.from(new Set(Object.keys(DEFAULTS.instruments).concat(custom)));
+    if (custom.length) return custom.slice();
+    return Array.from(new Set(Object.keys(DEFAULTS.instruments)));
   }
 
   function setupList(settings) {
-    return Array.from(new Set(DEFAULTS.setups.concat((settings && settings.customSetups) || [])));
+    const custom = (settings && settings.customSetups) || [];
+    if (custom.length) return custom.slice();
+    return DEFAULTS.setups.slice();
   }
 
   function sessionList(settings) {
-    return Array.from(new Set(DEFAULTS.sessions.concat((settings && settings.customSessions) || [])));
+    const custom = (settings && settings.customSessions) || [];
+    if (custom.length) return custom.slice();
+    return DEFAULTS.sessions.slice();
   }
 
   function sessionFromTime(time) {
