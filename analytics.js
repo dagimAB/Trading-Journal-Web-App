@@ -84,6 +84,7 @@
     { key: "mae", label: "MAE", default: true, width: 80, sortable: true, numeric: true },
     { key: "remainderExitR", label: "Rem. Exit R", default: true, width: 104, numeric: true },
     { key: "finalR", label: "Result", default: true, width: 92, sortable: true, numeric: true, derived: true },
+    { key: "status", label: "STATUS", default: true, width: 84, sortable: true, derived: true },
     { key: "exitReason", label: "Exit", default: true, width: 130 },
     { key: "levelsHit", label: "Levels Hit", default: true, width: 96, derived: true },
     { key: "pathComplete", label: "Path ✓", default: false, width: 84 },
@@ -357,6 +358,23 @@
     return "breakeven";
   }
 
+  function statusBadge(value) {
+    let n = value;
+    if (n && typeof n === "object") {
+      n = n.finalR !== undefined ? n.finalR : finalR(n);
+    }
+    n = toNum(n);
+    if (n === null || n === undefined) return '<span class="muted">—</span>';
+    if (Math.abs(n) < 1e-9) {
+      return '<span class="pill pill-be badge-be status-be" title="Breakeven">BE</span>';
+    }
+    if (n > 0) {
+      return '<span class="pill pill-win badge-win status-win" title="Win">WIN</span>';
+    }
+    return '<span class="pill pill-loss badge-loss status-loss" title="Loss">LOSS</span>';
+  }
+  const getStatusBadge = statusBadge;
+
   function setupComponents(trade) {
     const setup = trade && trade.setup;
     if (Array.isArray(setup)) return setup.map((s) => String(s).trim()).filter(Boolean);
@@ -402,6 +420,8 @@
       levelsHitOverridden: hits.overridden,
       finalR: result,
       status: result === null ? "incomplete" : "completed",
+      resultStatus: result === null ? null : (Math.abs(result) < 1e-9 ? "BE" : result > 0 ? "WIN" : "LOSS"),
+      statusBadge: statusBadge(result),
       outcome: classify(result),
       effectiveRemainder: derivedRemainder(trade),
       mfe: trade && trade.tradePath ? toNum(trade.tradePath.mfe) : null,
@@ -1074,7 +1094,7 @@
   function tradeSortValue(trade, key) {
     if (key === "mfe") return toNum(trade.tradePath && trade.tradePath.mfe);
     if (key === "mae") return toNum(trade.tradePath && trade.tradePath.mae);
-    if (key === "finalR") return finalR(trade);
+    if (key === "finalR" || key === "status") return finalR(trade);
     if (key === "direction") return trade.direction || "";
     if (key === "setup") return setupComponents(trade).join(", ");
     if (key === "instrument") return trade.instrument || "";
@@ -1329,6 +1349,8 @@
     finalR,
     breakdown,
     tradeStatus,
+    statusBadge,
+    getStatusBadge,
     classify,
     setupComponents,
     screenshotUrls,

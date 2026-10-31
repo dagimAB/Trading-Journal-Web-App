@@ -429,6 +429,41 @@ test("session suggestion uses historical clock time", () => {
   assert.strictEqual(A.sessionFromTime(""), null);
 });
 
+test("STATUS column is inserted right after RESULT column", () => {
+  const resultIdx = A.COLUMNS.findIndex((c) => c.key === "finalR");
+  assert.ok(resultIdx >= 0, "finalR (Result) column exists");
+  const statusCol = A.COLUMNS[resultIdx + 1];
+  assert.ok(statusCol, "STATUS column exists right after Result");
+  assert.strictEqual(statusCol.key, "status");
+  assert.strictEqual(statusCol.label, "STATUS");
+  assert.strictEqual(statusCol.default, true);
+});
+
+test("statusBadge helper inspects numeric final result (>0 WIN, <0 LOSS, ==0 BE)", () => {
+  // Positive / Win (> 0)
+  const winBadge = A.statusBadge(1.5);
+  assert.ok(winBadge.includes("WIN"));
+  assert.ok(winBadge.includes("pill-win") || winBadge.includes("badge-win"));
+
+  // Negative / Loss (< 0)
+  const lossBadge = A.statusBadge(-1.0);
+  assert.ok(lossBadge.includes("LOSS"));
+  assert.ok(lossBadge.includes("pill-loss") || lossBadge.includes("badge-loss"));
+
+  // Breakeven (== 0)
+  const beBadge = A.statusBadge(0);
+  assert.ok(beBadge.includes("BE"));
+  assert.ok(beBadge.includes("pill-be") || beBadge.includes("badge-be"));
+
+  // Trade object input
+  assert.ok(A.statusBadge({ finalR: 2.4 }).includes("WIN"));
+  assert.ok(A.statusBadge({ finalR: -0.8 }).includes("LOSS"));
+  assert.ok(A.statusBadge({ finalR: 0 }).includes("BE"));
+
+  // Incomplete / null
+  assert.strictEqual(A.statusBadge(null), '<span class="muted">—</span>');
+});
+
 test("performance: 5,000 trades compute under 2000ms", () => {
   const trades = A.generateDemoTrades(5000, { seed: 99 });
   const started = Date.now();

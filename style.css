@@ -572,6 +572,35 @@ textarea {
   border-color: color-mix(in srgb, var(--neg) 35%, transparent);
 }
 
+/* Status pills and badges (Win / Loss / Breakeven) */
+.pill-good,
+.pill-pos,
+.pill-win,
+.badge-win,
+.status-win {
+  color: var(--pos);
+  background: var(--pos-soft);
+  border-color: color-mix(in srgb, var(--pos) 35%, transparent);
+}
+
+.pill-loss,
+.badge-loss,
+.status-loss {
+  color: var(--neg);
+  background: var(--neg-soft);
+  border-color: color-mix(in srgb, var(--neg) 35%, transparent);
+}
+
+.pill-be,
+.badge-be,
+.status-be,
+.pill-zero,
+.badge-zero {
+  color: var(--muted);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
 /* Instrument pills */
 .pill-ins-nas100  { color: var(--ins-nas100-text);  background: var(--ins-nas100-bg);  border-color: var(--ins-nas100-border); }
 .pill-ins-us500   { color: var(--ins-us500-text);   background: var(--ins-us500-bg);   border-color: var(--ins-us500-border); }
@@ -596,6 +625,27 @@ textarea {
   display: inline-grid;
   place-items: center;
   padding: 0 5px;
+}
+
+.badge.badge-win,
+.badge.status-win {
+  background: var(--pos-soft);
+  color: var(--pos);
+  border: 1px solid color-mix(in srgb, var(--pos) 35%, transparent);
+}
+
+.badge.badge-loss,
+.badge.status-loss {
+  background: var(--neg-soft);
+  color: var(--neg);
+  border: 1px solid color-mix(in srgb, var(--neg) 35%, transparent);
+}
+
+.badge.badge-be,
+.badge.status-be {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
 }
 
 .dashboard,

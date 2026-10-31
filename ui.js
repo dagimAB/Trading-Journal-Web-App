@@ -2,7 +2,7 @@
   "use strict";
 
   const A = window.ICT.analytics;
-  const RESULT_COLUMN_KEYS = ["mfe", "mae", "remainderExitR", "finalR", "exitReason", "levelsHit", "pathComplete", "waypoints", "screenshot"];
+  const RESULT_COLUMN_KEYS = ["mfe", "mae", "remainderExitR", "finalR", "status", "exitReason", "levelsHit", "pathComplete", "waypoints", "screenshot"];
   const INLINE_FIELDS = new Set([
     "date", "time", "session", "killzone", "instrument", "direction", "setup", "setupQuality",
     "htfBias", "htfTimeframe", "entryTimeframe", "entry", "stopLoss", "riskR", "mfe", "mae",
@@ -86,6 +86,18 @@
     return n > 0 ? "pos" : "neg";
   }
 
+  function statusBadge(value) {
+    if (A.statusBadge) return A.statusBadge(value);
+    let n = value;
+    if (n && typeof n === "object") n = n.finalR !== undefined ? n.finalR : (A.finalR ? A.finalR(n) : null);
+    n = A.toNum(n);
+    if (n === null || n === undefined) return '<span class="muted">—</span>';
+    if (Math.abs(n) < 1e-9) return '<span class="pill pill-be badge-be status-be" title="Breakeven">BE</span>';
+    if (n > 0) return '<span class="pill pill-win badge-win status-win" title="Win">WIN</span>';
+    return '<span class="pill pill-loss badge-loss status-loss" title="Loss">LOSS</span>';
+  }
+  const getStatusBadge = statusBadge;
+
   function fmtPct(value) {
     return value === null || value === undefined ? "—" : A.formatNumber(value, 1) + "%";
   }
@@ -166,6 +178,8 @@
       case "finalR":
         if (trade.finalR === null || trade.finalR === undefined) return '<span class="muted">—</span>';
         return `<span class="num ${signedClass(trade.finalR)}">${esc(A.formatR(trade.finalR))}</span>${A.toNum(trade.finalROverride) !== null ? '<span class="override-flag" title="Manual Final R override">OVR</span>' : ""}`;
+      case "status":
+        return statusBadge(trade.finalR);
       case "exitReason": return esc(trade.exitReason || "—");
       case "levelsHit":
         return `<span class="mono">${esc(trade.levelsHitLabel || "—")}</span>${trade.levelsHitOverridden ? '<span class="override-flag" title="Levels Hit override active">OVR</span>' : ""}`;
@@ -215,14 +229,16 @@
     const cells = columns.map((col) => {
       const editable = INLINE_FIELDS.has(col.key);
       const right = col.numeric ? " right" : "";
-      const center = col.key === "levelsHit" || col.key === "pathComplete" || col.key === "screenshot" ? " center" : "";
+      const center = col.key === "levelsHit" || col.key === "pathComplete" || col.key === "screenshot" || col.key === "status" ? " center" : "";
       const sticky = offsets[col.key] !== undefined;
       const style = sticky ? ` style="left:${offsets[col.key]}px"` : "";
       const field = editable ? ` data-field="${col.key}"` : "";
       const title = col.key === "mfe"
         ? ' title="Maximum favorable excursion on the unmanaged path before the original stop. Continue the replay until the stop would have been hit for a complete path."'
-        : col.key === "finalR" ? ' title="Calculated from the Exit Plan. Click to set a manual override."' : "";
-      return `<td class="num${right}${center}${sticky ? " sticky" : ""}"${style}${field}${title}>${cellText(trade, col.key)}</td>`;
+        : col.key === "finalR" ? ' title="Calculated from the Exit Plan. Click to set a manual override."'
+        : col.key === "status" ? ' title="Trade Status (Win / Loss / Breakeven)"' : "";
+      const cellContent = col.key === "status" ? statusBadge(trade.finalR) : cellText(trade, col.key);
+      return `<td class="num${right}${center}${sticky ? " sticky" : ""}"${style}${field}${title}>${cellContent}</td>`;
     }).join("");
     const rowClass = [trade.isDemo ? "is-demo" : "", trade.status === "incomplete" ? "incomplete" : "", selection.has(trade.id) ? "is-selected" : ""].filter(Boolean).join(" ");
     const checked = selection.has(trade.id) ? " checked" : "";
