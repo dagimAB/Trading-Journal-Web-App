@@ -124,7 +124,10 @@
     const counts = screenshotCounts();
     return raw.map((trade) => {
       const decorated = A.decorate(trade);
-      decorated.screenshotCount = counts.get(String(trade.id)) || (trade.screenshotBefore || trade.screenshotAfter ? 1 : 0);
+      const galleryCount = counts.get(String(trade.id)) || 0;
+      const legacyCount = !galleryCount && (trade.screenshotBefore || trade.screenshotAfter) ? 1 : 0;
+      const dedicatedCount = (trade.entryScreenshot ? 1 : 0) + (trade.outcomeScreenshot ? 1 : 0);
+      decorated.screenshotCount = galleryCount + legacyCount + dedicatedCount;
       return decorated;
     });
   }

@@ -1738,6 +1738,8 @@
     const form = host.closest("form");
     if (form) {
       form.addEventListener("paste", async (event) => {
+        const target = event.target;
+        if (target && target.closest && !host.contains(target)) return;
         const items = event.clipboardData ? Array.from(event.clipboardData.files || []) : [];
         const images = items.filter((file) => /^image\//.test(file.type));
         if (images.length) {
@@ -1860,11 +1862,11 @@
           <span class="hint">Upload the entry chart or paste an image URL.</span>
         </div>
       </div>
-      ${isNew ? "" : `<div class="form-section" data-outcome-shot-section>
+      ${blind ? "" : `<div class="form-section" data-outcome-shot-section>
         <h3>Outcome Screenshot</h3>
         <div class="field" data-wrap="outcomeScreenshot">
           <div data-outcome-shot></div>
-          <span class="hint">The final price-action chart. Stored separately from the entry screenshot.</span>
+          <span class="hint">Optional. The final price-action chart. Stored separately from the entry screenshot.</span>
         </div>
       </div>`}
       <div class="form-section">
@@ -1878,11 +1880,11 @@
       </div>
       <div class="form-section">
         <details class="collapsed-fields" data-notes-section>
-          <summary>Notes, dataset &amp; screenshots (optional)</summary>
+          <summary>Notes, dataset &amp; additional screenshots (optional)</summary>
           <div class="field" style="margin-top:8px"><textarea name="notes" rows="3" placeholder="What was the story? What would you repeat or avoid?">${esc(draft.notes || "")}</textarea></div>
           <div class="form-grid" style="margin-top:10px">
             <div class="field"><label>Dataset / batch</label><input type="text" name="dataset" value="${esc(draft.dataset || "")}" placeholder="e.g. Backtest Batch 1"></div>
-            <div class="field"><label>Screenshots</label><div data-shots></div></div>
+            <div class="field"><label>Additional Screenshots</label><div data-shots></div><span class="hint">Extra context images; multiple uploads supported.</span></div>
           </div>
         </details>
       </div>
@@ -1917,7 +1919,7 @@
     const sessionInput = form.querySelector('[name="session"]');
     const riskDistanceEl = form.querySelector("[data-risk-distance]");
     const shotHost = form.querySelector("[data-shots]");
-    const shots = screenshotManager(isNew ? null : base.id, shotHost);
+    const shots = blind ? null : screenshotManager(isNew ? null : base.id, shotHost);
     const entryShot = createScreenshotField({ initialUrl: draft.entryScreenshot || null, pasteKey: "entry" });
     form.querySelector("[data-entry-shot]").appendChild(entryShot.element);
     const outcomeShotHost = form.querySelector("[data-outcome-shot]");
@@ -2103,7 +2105,7 @@
         if (isNew) next.createdAt = next.updatedAt;
         next.isDemo = !!base.isDemo;
         if (H.saveTrade) await H.saveTrade(next);
-        await shots.commit(next.id);
+        if (shots) await shots.commit(next.id);
         model.settings.lastEntry = { date: next.date, instrument: next.instrument, session: next.session, direction: next.direction };
         model.settings.lastExitPlan = planEditor.getLevels();
         model.settings.lastTemplateId = planEditor.getTemplateId();
@@ -2354,8 +2356,12 @@
         <p class="detail-notes">${esc(trade.notes || "No notes.")}</p>
       </div>
       <div class="detail-section">
-        <h3>Screenshots <span class="hint" data-shot-count></span></h3>
+        <h3>Screenshots</h3>
         <div class="details-shots" data-details-shots><p class="muted">Loading…</p></div>
+      </div>
+      <div class="detail-section">
+        <h3>Additional Screenshots <span class="hint" data-extra-shot-count></span></h3>
+        <div class="details-shots" data-extra-shots><p class="muted">Loading…</p></div>
       </div>`;
 
     body.querySelector('[data-detail-action="edit"]').addEventListener("click", () => openTradeForm(trade.id));
@@ -2390,49 +2396,52 @@
     });
 
     const shotsEl = body.querySelector("[data-details-shots]");
-    const countEl = body.querySelector("[data-shot-count]");
+    const extraShotsEl = body.querySelector("[data-extra-shots]");
+    const countEl = body.querySelector("[data-extra-shot-count]");
     const pinned = [];
     if (trade.entryScreenshot) pinned.push({ src: trade.entryScreenshot, name: "Entry screenshot" });
     if (trade.outcomeScreenshot) pinned.push({ src: trade.outcomeScreenshot, name: "Outcome screenshot" });
+
+    const addFigure = (target, src, name, shot) => {
+      const fig = h("figure", { class: "detail-shot" });
+      const img = h("img", { src, alt: name, loading: "lazy" });
+      img.addEventListener("click", () => {
+        openModal({
+          title: name,
+          size: "modal-lg",
+          body: `<div class="lightbox"><img src="${esc(src)}" alt="${esc(name)}"></div>`,
+        });
+      });
+      const cap = h("figcaption", { text: name });
+      fig.appendChild(img);
+      fig.appendChild(cap);
+      if (shot) {
+        const del = h("button", { type: "button", class: "icon-btn danger", title: "Delete screenshot", text: "×" });
+        del.addEventListener("click", async () => {
+          const ok = await confirm({ title: "Delete screenshot?", message: "This image will be permanently removed.", confirmLabel: "Delete", danger: true });
+          if (!ok) return;
+          await H.deleteScreenshot(shot.id);
+          toast("Screenshot deleted.", { type: "success" });
+          renderDetails();
+        });
+        fig.appendChild(del);
+      }
+      target.appendChild(fig);
+    };
+
+    shotsEl.innerHTML = "";
+    if (pinned.length) pinned.forEach((shot) => addFigure(shotsEl, shot.src, shot.name, null));
+    else shotsEl.innerHTML = '<p class="muted">No entry or outcome screenshots.</p>';
+
     Promise.resolve(H.listScreenshots ? H.listScreenshots(trade.id) : []).then((shots) => {
       const list = shots || [];
-      const total = pinned.length + list.length;
-      if (countEl) countEl.textContent = total ? "· " + total : "";
-      if (!total) {
-        shotsEl.innerHTML = '<p class="muted">No screenshots attached.</p>';
-        return;
-      }
-      shotsEl.innerHTML = "";
-      const addFigure = (src, name, shot) => {
-        const fig = h("figure", { class: "detail-shot" });
-        const img = h("img", { src, alt: name, loading: "lazy" });
-        img.addEventListener("click", () => {
-          openModal({
-            title: name,
-            size: "modal-lg",
-            body: `<div class="lightbox"><img src="${esc(src)}" alt="${esc(name)}"></div>`,
-          });
-        });
-        const cap = h("figcaption", { text: name });
-        fig.appendChild(img);
-        fig.appendChild(cap);
-        if (shot) {
-          const del = h("button", { type: "button", class: "icon-btn danger", title: "Delete screenshot", text: "×" });
-          del.addEventListener("click", async () => {
-            const ok = await confirm({ title: "Delete screenshot?", message: "This image will be permanently removed.", confirmLabel: "Delete", danger: true });
-            if (!ok) return;
-            await H.deleteScreenshot(shot.id);
-            toast("Screenshot deleted.", { type: "success" });
-            renderDetails();
-          });
-          fig.appendChild(del);
-        }
-        shotsEl.appendChild(fig);
-      };
-      pinned.forEach((shot) => addFigure(shot.src, shot.name, null));
-      list.forEach((shot) => addFigure(shot.displayUrl || shot.url || shot.dataUrl || "", shot.name || "Screenshot", shot));
+      if (countEl) countEl.textContent = list.length ? "· " + list.length : "";
+      extraShotsEl.innerHTML = "";
+      if (list.length) list.forEach((shot) => addFigure(extraShotsEl, shot.displayUrl || shot.url || shot.dataUrl || "", shot.name || "Screenshot", shot));
+      else extraShotsEl.innerHTML = '<p class="muted">No additional screenshots.</p>';
     }).catch(() => {
-      if (shotsEl) shotsEl.innerHTML = '<p class="muted">Could not load screenshots.</p>';
+      if (countEl) countEl.textContent = "";
+      if (extraShotsEl) extraShotsEl.innerHTML = '<p class="muted">Could not load additional screenshots.</p>';
     });
   }
 
