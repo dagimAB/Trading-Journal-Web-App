@@ -82,7 +82,7 @@ label.chk .imp{width:11px;height:11px}
 .banner[hidden]{display:none}
 .good{color:var(--good);font-weight:600} .bad{color:var(--bad);font-weight:600}
 .time{white-space:nowrap;color:var(--muted)}
-.blur{filter:blur(6px);user-select:none}
+.blur{display:none !important;visibility:hidden !important}
 .note{color:var(--muted);font-size:12px;margin-top:12px}
 @media(max-width:700px){
   td,th{padding:6px 6px;font-size:12px}
@@ -138,7 +138,7 @@ label.chk .imp{width:11px;height:11px}
         <option value="Europe/Berlin">Frankfurt / CET</option>
         <option value="Africa/Addis_Ababa">Addis Ababa (EAT)</option>
       </select>
-      <label class="chk" title="Blur Actual so it does not bias a blind backtest"><input type="checkbox" id="hide">Hide actual</label>
+      <label class="chk" title="Hide Actual so it does not bias a blind backtest"><input type="checkbox" id="hide">Hide actual</label>
     </div>
   </div>
   <p class="hint">Left / Right arrow keys move one week (or one day). Week starts on Sunday, like ForexFactory.</p>
@@ -291,8 +291,8 @@ function render(){
       // Show the time only when it changes (ForexFactory style).
       const t = e.allDay ? "All day" : pad(e.l.hh)+":"+pad(e.l.mm);
       const show = t!==last ? t : ""; last = t;
-      const v = verdict(e);
-      const act = e.actual ? `<span class="${v} ${S.hide?"blur":""}">${esc(e.actual)}</span>` : "";
+      const v = S.hide ? "" : verdict(e);
+      const act = (!e.actual || S.hide) ? "" : `<span class="${v}">${esc(e.actual)}</span>`;
       rows.push(`<tr class="ev"><td class="time">${show}</td>
         <td><span class="cur ${e.cur}">${e.cur}</span></td>
         <td><span class="imp i${e.imp}" title="${IMP_TITLE[e.imp]}"></span></td>
