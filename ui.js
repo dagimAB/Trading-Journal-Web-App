@@ -1860,6 +1860,13 @@
           <span class="hint">Upload the entry chart or paste an image URL.</span>
         </div>
       </div>
+      ${isNew ? "" : `<div class="form-section" data-outcome-shot-section>
+        <h3>Outcome Screenshot</h3>
+        <div class="field" data-wrap="outcomeScreenshot">
+          <div data-outcome-shot></div>
+          <span class="hint">The final price-action chart. Stored separately from the entry screenshot.</span>
+        </div>
+      </div>`}
       <div class="form-section">
         <h3>Exit Plan <span class="hint" style="text-transform:none;letter-spacing:normal;font-weight:400">Allocations must total 100%</span></h3>
         <div data-plan-host></div>
@@ -1913,6 +1920,9 @@
     const shots = screenshotManager(isNew ? null : base.id, shotHost);
     const entryShot = createScreenshotField({ initialUrl: draft.entryScreenshot || null, pasteKey: "entry" });
     form.querySelector("[data-entry-shot]").appendChild(entryShot.element);
+    const outcomeShotHost = form.querySelector("[data-outcome-shot]");
+    const outcomeShot = outcomeShotHost ? createScreenshotField({ initialUrl: draft.outcomeScreenshot || null }) : null;
+    if (outcomeShot) outcomeShotHost.appendChild(outcomeShot.element);
 
     if (timeInput && sessionInput && model.settings.autoSession && model.settings.marketTimeZone) {
       let userTouched = !isNew;
@@ -2044,6 +2054,7 @@
       }
       const next = formToDraft(form, draft, planEditor, resultFields, complete);
       next.entryScreenshot = entryShot.getValue();
+      next.outcomeScreenshot = outcomeShot ? outcomeShot.getValue() : null;
       if (!next.date) {
         showFormIssues(form, [{ field: "date", message: "A valid date is required.", level: "error" }]);
         return;
@@ -2380,39 +2391,46 @@
 
     const shotsEl = body.querySelector("[data-details-shots]");
     const countEl = body.querySelector("[data-shot-count]");
+    const pinned = [];
+    if (trade.entryScreenshot) pinned.push({ src: trade.entryScreenshot, name: "Entry screenshot" });
+    if (trade.outcomeScreenshot) pinned.push({ src: trade.outcomeScreenshot, name: "Outcome screenshot" });
     Promise.resolve(H.listScreenshots ? H.listScreenshots(trade.id) : []).then((shots) => {
       const list = shots || [];
-      if (countEl) countEl.textContent = list.length ? "· " + list.length : "";
-      if (!list.length) {
+      const total = pinned.length + list.length;
+      if (countEl) countEl.textContent = total ? "· " + total : "";
+      if (!total) {
         shotsEl.innerHTML = '<p class="muted">No screenshots attached.</p>';
         return;
       }
       shotsEl.innerHTML = "";
-      list.forEach((shot) => {
-        const src = shot.displayUrl || shot.url || shot.dataUrl || "";
+      const addFigure = (src, name, shot) => {
         const fig = h("figure", { class: "detail-shot" });
-        const img = h("img", { src, alt: shot.name || "Screenshot", loading: "lazy" });
+        const img = h("img", { src, alt: name, loading: "lazy" });
         img.addEventListener("click", () => {
           openModal({
-            title: shot.name || "Screenshot",
+            title: name,
             size: "modal-lg",
-            body: `<div class="lightbox"><img src="${esc(src)}" alt="${esc(shot.name || "Screenshot")}"></div>`,
+            body: `<div class="lightbox"><img src="${esc(src)}" alt="${esc(name)}"></div>`,
           });
         });
-        const cap = h("figcaption", { text: shot.name || "Screenshot" });
-        const del = h("button", { type: "button", class: "icon-btn danger", title: "Delete screenshot", text: "×" });
-        del.addEventListener("click", async () => {
-          const ok = await confirm({ title: "Delete screenshot?", message: "This image will be permanently removed.", confirmLabel: "Delete", danger: true });
-          if (!ok) return;
-          await H.deleteScreenshot(shot.id);
-          toast("Screenshot deleted.", { type: "success" });
-          renderDetails();
-        });
+        const cap = h("figcaption", { text: name });
         fig.appendChild(img);
         fig.appendChild(cap);
-        fig.appendChild(del);
+        if (shot) {
+          const del = h("button", { type: "button", class: "icon-btn danger", title: "Delete screenshot", text: "×" });
+          del.addEventListener("click", async () => {
+            const ok = await confirm({ title: "Delete screenshot?", message: "This image will be permanently removed.", confirmLabel: "Delete", danger: true });
+            if (!ok) return;
+            await H.deleteScreenshot(shot.id);
+            toast("Screenshot deleted.", { type: "success" });
+            renderDetails();
+          });
+          fig.appendChild(del);
+        }
         shotsEl.appendChild(fig);
-      });
+      };
+      pinned.forEach((shot) => addFigure(shot.src, shot.name, null));
+      list.forEach((shot) => addFigure(shot.displayUrl || shot.url || shot.dataUrl || "", shot.name || "Screenshot", shot));
     }).catch(() => {
       if (shotsEl) shotsEl.innerHTML = '<p class="muted">Could not load screenshots.</p>';
     });
