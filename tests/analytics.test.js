@@ -387,6 +387,19 @@ test("filters apply to derived result, ranges and search", () => {
   assert.strictEqual(A.applyFilters(trades.concat([low]), { mfeAtLeast: 7 }, A.defaultSettings()).length, 3);
 });
 
+test("screenshot lists prefer arrays and fall back to legacy strings", () => {
+  assert.deepStrictEqual(A.screenshotUrls({ entryScreenshot: "legacy-entry" }, "entry"), ["legacy-entry"]);
+  assert.deepStrictEqual(
+    A.screenshotUrls({ entryScreenshots: ["entry-1", "entry-2"], entryScreenshot: "legacy-entry" }, "entry"),
+    ["entry-1", "entry-2"]
+  );
+  assert.deepStrictEqual(
+    A.screenshotUrls({ outcomeScreenshots: ["outcome-1", "outcome-1", "", "outcome-2"], outcomeScreenshot: "legacy-outcome" }, "outcome"),
+    ["outcome-1", "outcome-2"]
+  );
+  assert.deepStrictEqual(A.screenshotUrls({}, "outcome"), []);
+});
+
 test("demo generator respects count, numbering and isDemo flag", () => {
   const trades = A.generateDemoTrades(120, { seed: 7 });
   assert.strictEqual(trades.length, 120);

@@ -1492,6 +1492,8 @@
       screenshotAfter: null,
       entryScreenshot: null,
       outcomeScreenshot: null,
+      entryScreenshots: [],
+      outcomeScreenshots: [],
       notes: "",
       dataset: "",
       isDemo: false,
@@ -1592,45 +1594,67 @@
     return { url: uploaded.url, displayUrl: uploaded.displayUrl, deleteUrl: uploaded.deleteUrl, name, width, height };
   }
 
-  // Single-image upload field — returns { getValue(), element }
-  // Supports file pick, drag-drop, Ctrl+V paste, and direct URL input.
-  function createScreenshotField(options) {
+  // Multi-image upload field — returns { getValue(), element }
+  // Supports multi-file pick, drag-drop, Ctrl+V paste, and direct URL input.
+  function createScreenshotListField(options) {
     const opts = options || {};
-    let currentUrl = opts.initialUrl || null;
+    let currentUrls = (Array.isArray(opts.initialUrls) ? opts.initialUrls : []).filter(Boolean);
 
-    const root = h("div", { class: "screenshot-field" });
-    const previewEl = h("div", { class: "screenshot-preview" });
-    const urlInput = h("input", { type: "url", class: "screenshot-url-input", placeholder: "Paste URL or upload image…", value: currentUrl || "" });
-    const fileInput = h("input", { type: "file", accept: "image/*", hidden: "hidden" });
-    const uploadBtn = h("button", { type: "button", class: "btn btn-ghost btn-small", text: "Upload image" });
+    const root = h("div", { class: "screenshot-field screenshot-list-field", tabindex: "0" });
+    const listEl = h("div", { class: "shot-list" });
+    const urlInput = h("input", { type: "url", class: "screenshot-url-input", placeholder: "Paste image URL and press Enter…" });
+    const fileInput = h("input", { type: "file", accept: "image/*", multiple: "multiple", hidden: "hidden" });
+    const uploadBtn = h("button", { type: "button", class: "btn btn-ghost btn-small", text: "Upload images" });
+    const addUrlBtn = h("button", { type: "button", class: "btn btn-ghost btn-small", text: "Add URL" });
+    const clearBtn = h("button", { type: "button", class: "btn btn-ghost btn-small", text: "Clear all", style: { display: currentUrls.length ? "" : "none" } });
     const statusEl = h("span", { class: "hint" });
-    const clearBtn = h("button", { type: "button", class: "btn btn-ghost btn-small", text: "Clear", style: { display: currentUrl ? "" : "none" } });
 
-    root.appendChild(previewEl);
+    root.appendChild(listEl);
     root.appendChild(urlInput);
-    root.appendChild(h("div", { class: "inline-actions", style: { marginTop: "5px" } }, uploadBtn, statusEl, clearBtn, fileInput));
+    root.appendChild(h("div", { class: "inline-actions", style: { marginTop: "5px" } }, uploadBtn, addUrlBtn, statusEl, clearBtn, fileInput));
 
-    function setUrl(url) {
-      currentUrl = url || null;
-      urlInput.value = currentUrl || "";
-      clearBtn.style.display = currentUrl ? "" : "none";
-      if (currentUrl) {
-        previewEl.innerHTML = `<img src="${esc(currentUrl)}" alt="Screenshot preview" class="screenshot-thumb">`;
-      } else {
-        previewEl.innerHTML = "";
-      }
+    function render() {
+      listEl.innerHTML = "";
+      currentUrls.forEach((url, index) => {
+        const chip = h("div", { class: "shot-chip" });
+        chip.appendChild(h("img", { src: url, alt: (opts.label || "Screenshot") + " " + (index + 1) }));
+        chip.appendChild(h("span", { class: "shot-name", text: "Image " + (index + 1) }));
+        chip.appendChild(h("button", {
+          type: "button", class: "icon-btn danger", title: "Remove screenshot", text: "×",
+          onclick: () => { currentUrls.splice(index, 1); render(); },
+        }));
+        listEl.appendChild(chip);
+      });
+      if (!currentUrls.length) listEl.appendChild(h("p", { class: "muted", style: { margin: "0", fontSize: "12px" }, text: "No images attached." }));
+      clearBtn.style.display = currentUrls.length ? "" : "none";
     }
 
-    async function handleFile(file) {
-      if (!file || !/^image\//.test(file.type)) return;
+    function addUrl(raw) {
+      const url = String(raw || "").trim();
+      if (!url || currentUrls.includes(url)) return false;
+      currentUrls.push(url);
+      render();
+      return true;
+    }
+
+    function addUrlFromInput() {
+      if (addUrl(urlInput.value)) urlInput.value = "";
+      urlInput.focus();
+    }
+
+    async function handleFiles(files) {
+      const list = Array.from(files || []).filter((file) => file && /^image\//.test(file.type));
+      if (!list.length) return;
       statusEl.className = "shot-uploading";
-      statusEl.textContent = "Uploading…";
+      statusEl.textContent = list.length > 1 ? `Uploading ${list.length} images…` : "Uploading…";
       uploadBtn.disabled = true;
-      try {
-        const shot = await imageFileToScreenshot(file);
-        setUrl(shot.displayUrl || shot.url);
-      } catch (err) {
-        toast(err.message, { type: "error" });
+      for (const file of list) {
+        try {
+          const shot = await imageFileToScreenshot(file);
+          addUrl(shot.displayUrl || shot.url);
+        } catch (err) {
+          toast(err.message, { type: "error" });
+        }
       }
       statusEl.className = "hint";
       statusEl.textContent = "";
@@ -1639,54 +1663,52 @@
 
     uploadBtn.addEventListener("click", () => fileInput.click());
     fileInput.addEventListener("change", async () => {
-      const file = fileInput.files && fileInput.files[0];
+      const files = Array.from(fileInput.files || []);
       fileInput.value = "";
-      await handleFile(file);
+      await handleFiles(files);
     });
-    urlInput.addEventListener("input", () => {
-      const val = urlInput.value.trim();
-      currentUrl = val || null;
-      clearBtn.style.display = currentUrl ? "" : "none";
-      if (currentUrl) {
-        previewEl.innerHTML = `<img src="${esc(currentUrl)}" alt="Screenshot preview" class="screenshot-thumb">`;
-      } else {
-        previewEl.innerHTML = "";
+    addUrlBtn.addEventListener("click", addUrlFromInput);
+    urlInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addUrlFromInput();
       }
     });
-    clearBtn.addEventListener("click", () => setUrl(null));
+    clearBtn.addEventListener("click", () => { currentUrls = []; urlInput.value = ""; render(); });
 
-    // Drag & drop onto the preview/root
     root.addEventListener("dragover", (e) => { e.preventDefault(); root.classList.add("drag-over"); });
     root.addEventListener("dragleave", () => root.classList.remove("drag-over"));
     root.addEventListener("drop", async (e) => {
       e.preventDefault();
       root.classList.remove("drag-over");
-      const file = e.dataTransfer.files && e.dataTransfer.files[0];
-      await handleFile(file);
+      await handleFiles(e.dataTransfer.files);
     });
 
-    // Paste support — attach to nearest form on first render
+    // Paste support — route images to the focused field, defaulting to Entry.
     setTimeout(() => {
       const form = root.closest("form");
-      if (form && opts.pasteKey) {
-        form.addEventListener("paste", async (e) => {
-          // Only fire for the field that is focused or if nothing in form is focused
-          const active = document.activeElement;
-          if (active && active !== urlInput && form.contains(active) && active.tagName !== "BODY") return;
-          const files = e.clipboardData ? Array.from(e.clipboardData.files || []) : [];
-          const img = files.find((f) => /^image\//.test(f.type));
-          if (img) { e.preventDefault(); await handleFile(img); }
-        });
-      }
+      if (!form) return;
+      form.addEventListener("paste", async (e) => {
+        const active = document.activeElement;
+        const focusedField = active && active.closest ? active.closest(".screenshot-list-field") : null;
+        const targetField = e.target && e.target.closest ? e.target.closest(".screenshot-list-field") : null;
+        const owner = focusedField || targetField;
+        if (owner && owner !== root) return;
+        if (!owner && !opts.defaultPaste) return;
+        const extrasZone = (active && active.closest ? active.closest("[data-shots]") : null) ||
+          (e.target && e.target.closest ? e.target.closest("[data-shots]") : null);
+        if (extrasZone) return;
+        const files = e.clipboardData ? Array.from(e.clipboardData.files || []) : [];
+        const img = files.find((f) => /^image\//.test(f.type));
+        if (img) { e.preventDefault(); await handleFiles([img]); }
+      });
     }, 0);
 
-    // Pre-populate preview if initialUrl set
-    if (currentUrl) setUrl(currentUrl);
-
+    render();
     return {
       element: root,
-      getValue: () => currentUrl || null,
-      setValue: setUrl,
+      getValue: () => currentUrls.slice(),
+      setValue: (urls) => { currentUrls = (Array.isArray(urls) ? urls : []).filter(Boolean); render(); },
     };
   }
 
@@ -1859,14 +1881,14 @@
         <h3>Entry Screenshot</h3>
         <div class="field" data-wrap="entryScreenshot">
           <div data-entry-shot></div>
-          <span class="hint">Upload the entry chart or paste an image URL.</span>
+          <span class="hint">Upload one or more entry charts or add image URLs.</span>
         </div>
       </div>
       ${blind ? "" : `<div class="form-section" data-outcome-shot-section>
         <h3>Outcome Screenshot</h3>
         <div class="field" data-wrap="outcomeScreenshot">
           <div data-outcome-shot></div>
-          <span class="hint">Optional. The final price-action chart. Stored separately from the entry screenshot.</span>
+          <span class="hint">Optional. Upload one or more final price-action charts or add image URLs.</span>
         </div>
       </div>`}
       <div class="form-section">
@@ -1920,10 +1942,10 @@
     const riskDistanceEl = form.querySelector("[data-risk-distance]");
     const shotHost = form.querySelector("[data-shots]");
     const shots = blind ? null : screenshotManager(isNew ? null : base.id, shotHost);
-    const entryShot = createScreenshotField({ initialUrl: draft.entryScreenshot || null, pasteKey: "entry" });
+    const entryShot = createScreenshotListField({ initialUrls: A.screenshotUrls(draft, "entry"), label: "Entry screenshot", defaultPaste: true });
     form.querySelector("[data-entry-shot]").appendChild(entryShot.element);
     const outcomeShotHost = form.querySelector("[data-outcome-shot]");
-    const outcomeShot = outcomeShotHost ? createScreenshotField({ initialUrl: draft.outcomeScreenshot || null }) : null;
+    const outcomeShot = outcomeShotHost ? createScreenshotListField({ initialUrls: A.screenshotUrls(draft, "outcome"), label: "Outcome screenshot" }) : null;
     if (outcomeShot) outcomeShotHost.appendChild(outcomeShot.element);
 
     if (timeInput && sessionInput && model.settings.autoSession && model.settings.marketTimeZone) {
@@ -2055,8 +2077,17 @@
         if (!ok) return;
       }
       const next = formToDraft(form, draft, planEditor, resultFields, complete);
-      next.entryScreenshot = entryShot.getValue();
-      next.outcomeScreenshot = outcomeShot ? outcomeShot.getValue() : null;
+      const entryUrls = entryShot.getValue();
+      next.entryScreenshots = entryUrls;
+      next.entryScreenshot = entryUrls[0] || null;
+      if (outcomeShot) {
+        const outcomeUrls = outcomeShot.getValue();
+        next.outcomeScreenshots = outcomeUrls;
+        next.outcomeScreenshot = outcomeUrls[0] || null;
+      } else {
+        next.outcomeScreenshots = [];
+        next.outcomeScreenshot = null;
+      }
       if (!next.date) {
         showFormIssues(form, [{ field: "date", message: "A valid date is required.", level: "error" }]);
         return;
@@ -2166,7 +2197,7 @@
         <h3>Outcome Screenshot</h3>
         <div class="field" data-wrap="outcomeScreenshot">
           <div data-outcome-shot></div>
-          <span class="hint">Attach the final price-action chart. This is stored separately from the entry screenshot.</span>
+          <span class="hint">Upload one or more final price-action charts or add image URLs. Entry screenshots are kept separately.</span>
         </div>
       </div>`;
 
@@ -2176,7 +2207,7 @@
       onOverride: () => {},
     });
     form.querySelector("[data-result-host]").appendChild(resultFields.element);
-    const outcomeShot = createScreenshotField({ initialUrl: draft.outcomeScreenshot || null, pasteKey: "outcome" });
+    const outcomeShot = createScreenshotListField({ initialUrls: A.screenshotUrls(draft, "outcome"), label: "Outcome screenshot", defaultPaste: true });
     form.querySelector("[data-outcome-shot]").appendChild(outcomeShot.element);
 
     const footer = h("div", { class: "modal-foot" });
@@ -2197,7 +2228,9 @@
       event.preventDefault();
       const next = cloneTrade(trade);
       resultFields.read(next);
-      next.outcomeScreenshot = outcomeShot.getValue();
+      const outcomeUrls = outcomeShot.getValue();
+      next.outcomeScreenshots = outcomeUrls;
+      next.outcomeScreenshot = outcomeUrls[0] || null;
       next.status = "completed";
       next.updatedAt = new Date().toISOString();
       const check = A.validateTrade(next);
@@ -2399,8 +2432,10 @@
     const extraShotsEl = body.querySelector("[data-extra-shots]");
     const countEl = body.querySelector("[data-extra-shot-count]");
     const pinned = [];
-    if (trade.entryScreenshot) pinned.push({ src: trade.entryScreenshot, name: "Entry screenshot" });
-    if (trade.outcomeScreenshot) pinned.push({ src: trade.outcomeScreenshot, name: "Outcome screenshot" });
+    [["entry", "Entry screenshot"], ["outcome", "Outcome screenshot"]].forEach(([kind, label]) => {
+      const urls = A.screenshotUrls(trade, kind);
+      urls.forEach((src, index) => pinned.push({ src, name: urls.length > 1 ? label + " " + (index + 1) : label }));
+    });
 
     const addFigure = (target, src, name, shot) => {
       const fig = h("figure", { class: "detail-shot" });

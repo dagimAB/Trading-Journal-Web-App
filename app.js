@@ -67,6 +67,8 @@
 
   function sanitizeTrade(trade) {
     const tp = trade.tradePath || {};
+    const entryScreenshots = A.screenshotUrls(trade, "entry");
+    const outcomeScreenshots = A.screenshotUrls(trade, "outcome");
     return {
       id: trade.id,
       tradeNumber: A.toNum(trade.tradeNumber),
@@ -99,8 +101,10 @@
       exitReason: trade.exitReason || null,
       screenshotBefore: trade.screenshotBefore || null,
       screenshotAfter: trade.screenshotAfter || null,
-      entryScreenshot: trade.entryScreenshot || null,
-      outcomeScreenshot: trade.outcomeScreenshot || null,
+      entryScreenshot: entryScreenshots[0] || null,
+      outcomeScreenshot: outcomeScreenshots[0] || null,
+      entryScreenshots,
+      outcomeScreenshots,
       notes: trade.notes || "",
       dataset: trade.dataset || "",
       isDemo: !!trade.isDemo,
@@ -126,7 +130,7 @@
       const decorated = A.decorate(trade);
       const galleryCount = counts.get(String(trade.id)) || 0;
       const legacyCount = !galleryCount && (trade.screenshotBefore || trade.screenshotAfter) ? 1 : 0;
-      const dedicatedCount = (trade.entryScreenshot ? 1 : 0) + (trade.outcomeScreenshot ? 1 : 0);
+      const dedicatedCount = A.screenshotUrls(trade, "entry").length + A.screenshotUrls(trade, "outcome").length;
       decorated.screenshotCount = galleryCount + legacyCount + dedicatedCount;
       return decorated;
     });

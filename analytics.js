@@ -368,6 +368,23 @@
     return [];
   }
 
+  function screenshotUrls(trade, kind) {
+    const pluralKey = kind === "entry" ? "entryScreenshots" : "outcomeScreenshots";
+    const singularKey = kind === "entry" ? "entryScreenshot" : "outcomeScreenshot";
+    const seen = new Set();
+    const list = [];
+    const push = (value) => {
+      if (typeof value !== "string") return;
+      const url = value.trim();
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      list.push(url);
+    };
+    if (trade && Array.isArray(trade[pluralKey])) trade[pluralKey].forEach(push);
+    if (!list.length && trade && trade[singularKey]) push(trade[singularKey]);
+    return list;
+  }
+
   function decorate(trade) {
     const levels = normalizeLevels(trade && trade.exitPlan);
     const hits = levelHitState(trade);
@@ -1253,6 +1270,8 @@
         screenshotAfter: null,
         entryScreenshot: null,
         outcomeScreenshot: null,
+        entryScreenshots: [],
+        outcomeScreenshots: [],
         notes: pick([
           "London sweep + displacement.",
           "Strong HTF bearish bias.",
@@ -1310,6 +1329,7 @@
     tradeStatus,
     classify,
     setupComponents,
+    screenshotUrls,
     decorate,
     mean,
     median,
