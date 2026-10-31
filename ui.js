@@ -1974,6 +1974,7 @@
         const maeEl = form.querySelector('[name="mae"]');
         const riskEl = form.querySelector('[name="riskR"]');
         return Object.assign({}, draft, {
+          instrument: form.querySelector('[name="instrument"]').value || draft.instrument,
           entry: A.toNum(entryInput.value),
           stopLoss: A.toNum(slInput.value),
           direction: directionInput.value,

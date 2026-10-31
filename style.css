@@ -2695,6 +2695,43 @@ td .inline-error {
   flex-wrap: wrap;
 }
 
+.complete-summary {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.complete-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.complete-summary .label {
+  flex: 0 0 86px;
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.complete-summary .label::after {
+  content: ":";
+  margin-left: 2px;
+}
+
+.complete-summary > div > span:last-child {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
 .complete-toggle input {
   accent-color: var(--accent-solid);
 }
