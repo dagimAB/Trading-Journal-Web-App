@@ -99,6 +99,8 @@
       exitReason: trade.exitReason || null,
       screenshotBefore: trade.screenshotBefore || null,
       screenshotAfter: trade.screenshotAfter || null,
+      entryScreenshot: trade.entryScreenshot || null,
+      outcomeScreenshot: trade.outcomeScreenshot || null,
       notes: trade.notes || "",
       dataset: trade.dataset || "",
       isDemo: !!trade.isDemo,

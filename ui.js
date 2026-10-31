@@ -1490,6 +1490,8 @@
       exitReason: null,
       screenshotBefore: null,
       screenshotAfter: null,
+      entryScreenshot: null,
+      outcomeScreenshot: null,
       notes: "",
       dataset: "",
       isDemo: false,
@@ -1588,6 +1590,104 @@
     const { base64, name, width, height } = await imageFileToBase64(file);
     const uploaded = await uploadToImgBB(base64, name);
     return { url: uploaded.url, displayUrl: uploaded.displayUrl, deleteUrl: uploaded.deleteUrl, name, width, height };
+  }
+
+  // Single-image upload field — returns { getValue(), element }
+  // Supports file pick, drag-drop, Ctrl+V paste, and direct URL input.
+  function createScreenshotField(options) {
+    const opts = options || {};
+    let currentUrl = opts.initialUrl || null;
+
+    const root = h("div", { class: "screenshot-field" });
+    const previewEl = h("div", { class: "screenshot-preview" });
+    const urlInput = h("input", { type: "url", class: "screenshot-url-input", placeholder: "Paste URL or upload image…", value: currentUrl || "" });
+    const fileInput = h("input", { type: "file", accept: "image/*", hidden: "hidden" });
+    const uploadBtn = h("button", { type: "button", class: "btn btn-ghost btn-small", text: "Upload image" });
+    const statusEl = h("span", { class: "hint" });
+    const clearBtn = h("button", { type: "button", class: "btn btn-ghost btn-small", text: "Clear", style: { display: currentUrl ? "" : "none" } });
+
+    root.appendChild(previewEl);
+    root.appendChild(urlInput);
+    root.appendChild(h("div", { class: "inline-actions", style: { marginTop: "5px" } }, uploadBtn, statusEl, clearBtn, fileInput));
+
+    function setUrl(url) {
+      currentUrl = url || null;
+      urlInput.value = currentUrl || "";
+      clearBtn.style.display = currentUrl ? "" : "none";
+      if (currentUrl) {
+        previewEl.innerHTML = `<img src="${esc(currentUrl)}" alt="Screenshot preview" class="screenshot-thumb">`;
+      } else {
+        previewEl.innerHTML = "";
+      }
+    }
+
+    async function handleFile(file) {
+      if (!file || !/^image\//.test(file.type)) return;
+      statusEl.className = "shot-uploading";
+      statusEl.textContent = "Uploading…";
+      uploadBtn.disabled = true;
+      try {
+        const shot = await imageFileToScreenshot(file);
+        setUrl(shot.displayUrl || shot.url);
+      } catch (err) {
+        toast(err.message, { type: "error" });
+      }
+      statusEl.className = "hint";
+      statusEl.textContent = "";
+      uploadBtn.disabled = false;
+    }
+
+    uploadBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = "";
+      await handleFile(file);
+    });
+    urlInput.addEventListener("input", () => {
+      const val = urlInput.value.trim();
+      currentUrl = val || null;
+      clearBtn.style.display = currentUrl ? "" : "none";
+      if (currentUrl) {
+        previewEl.innerHTML = `<img src="${esc(currentUrl)}" alt="Screenshot preview" class="screenshot-thumb">`;
+      } else {
+        previewEl.innerHTML = "";
+      }
+    });
+    clearBtn.addEventListener("click", () => setUrl(null));
+
+    // Drag & drop onto the preview/root
+    root.addEventListener("dragover", (e) => { e.preventDefault(); root.classList.add("drag-over"); });
+    root.addEventListener("dragleave", () => root.classList.remove("drag-over"));
+    root.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      root.classList.remove("drag-over");
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      await handleFile(file);
+    });
+
+    // Paste support — attach to nearest form on first render
+    setTimeout(() => {
+      const form = root.closest("form");
+      if (form && opts.pasteKey) {
+        form.addEventListener("paste", async (e) => {
+          // Only fire for the field that is focused or if nothing in form is focused
+          const active = document.activeElement;
+          if (active && active !== urlInput && form.contains(active) && active.tagName !== "BODY") return;
+          const files = e.clipboardData ? Array.from(e.clipboardData.files || []) : [];
+          const img = files.find((f) => /^image\//.test(f.type));
+          if (img) { e.preventDefault(); await handleFile(img); }
+        });
+      }
+    }, 0);
+
+    // Pre-populate preview if initialUrl set
+    if (currentUrl) setUrl(currentUrl);
+
+    return {
+      element: root,
+      getValue: () => currentUrl || null,
+      setValue: setUrl,
+    };
   }
 
   function screenshotManager(tradeId, host) {
