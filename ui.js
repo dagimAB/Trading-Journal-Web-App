@@ -2456,10 +2456,11 @@
       </div>
       <div class="form-section">
         <h3>Custom values</h3>
+        <p class="hint" style="margin-bottom:10px">Add your own custom values. Built-in items always appear in dropdowns and are not shown here. Press Enter or comma to add, × to remove.</p>
         <div class="form-grid">
-          <div class="field"><label>Instruments</label><input type="text" name="customInstruments" value="${esc((s.customInstruments || []).join(", "))}" placeholder="Comma separated"></div>
-          <div class="field"><label>Setups</label><input type="text" name="customSetups" value="${esc((s.customSetups || []).join(", "))}" placeholder="Comma separated"></div>
-          <div class="field"><label>Sessions</label><input type="text" name="customSessions" value="${esc((s.customSessions || []).join(", "))}" placeholder="Comma separated"></div>
+          <div class="field"><label>Instruments</label><div class="tag-editor" data-tag-editor="customInstruments"></div></div>
+          <div class="field"><label>Setups</label><div class="tag-editor" data-tag-editor="customSetups"></div></div>
+          <div class="field"><label>Sessions</label><div class="tag-editor" data-tag-editor="customSessions"></div></div>
         </div>
       </div>
       <div class="form-section">
@@ -2470,6 +2471,63 @@
         <h3>Strategy rules</h3>
         <div class="field"><textarea name="strategyRules" rows="4" placeholder="Your entry checklist, risk rules, invalidation criteria…">${esc(s.strategyRules || "")}</textarea></div>
       </div>`;
+
+    // --- Tag editors for custom values ---
+    // Only manages user-added custom items. Built-ins are not shown or restored.
+    const tagState = {
+      customInstruments: (s.customInstruments || []).slice(),
+      customSetups: (s.customSetups || []).slice(),
+      customSessions: (s.customSessions || []).slice(),
+    };
+
+    function renderTagEditor(key) {
+      const host = form.querySelector('[data-tag-editor="' + key + '"]');
+      if (!host) return;
+      const items = tagState[key];
+      host.innerHTML = "";
+      const tags = h("div", { class: "tag-list" });
+
+      items.forEach((val, idx) => {
+        const tag = h("span", { class: "tag-item tag-custom" });
+        tag.appendChild(h("span", { text: val }));
+        const btn = h("button", { type: "button", class: "tag-remove", title: "Remove", text: "×" });
+        btn.addEventListener("click", () => {
+          items.splice(idx, 1);
+          renderTagEditor(key);
+        });
+        tag.appendChild(btn);
+        tags.appendChild(tag);
+      });
+
+      const input = h("input", { type: "text", class: "tag-input", placeholder: "Type name, press Enter to add…" });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === ",") {
+          event.preventDefault();
+          const val = input.value.trim().replace(/,$/, "");
+          if (val && !items.includes(val)) {
+            items.push(val);
+            renderTagEditor(key);
+          } else {
+            input.value = "";
+          }
+        } else if (event.key === "Backspace" && !input.value && items.length) {
+          items.pop();
+          renderTagEditor(key);
+        }
+      });
+      input.addEventListener("blur", () => {
+        const val = input.value.trim().replace(/,$/, "");
+        if (val && !items.includes(val)) {
+          items.push(val);
+          renderTagEditor(key);
+        }
+      });
+
+      host.appendChild(tags);
+      host.appendChild(input);
+    }
+
+    ["customInstruments", "customSetups", "customSessions"].forEach(renderTagEditor);
 
     const footer = h("div", { class: "modal-foot" });
     footer.appendChild(h("button", { type: "button", class: "btn btn-ghost", text: "Cancel", onclick: () => entry.close("cancel") }));
@@ -2512,9 +2570,9 @@
         thresholds,
         mfeBoundaries,
         maeBoundaries,
-        customInstruments: parseList(get("customInstruments").value),
-        customSetups: parseList(get("customSetups").value),
-        customSessions: parseList(get("customSessions").value),
+        customInstruments: tagState.customInstruments.slice(),
+        customSetups: tagState.customSetups.slice(),
+        customSessions: tagState.customSessions.slice(),
         instrumentDecimals,
         strategyRules: get("strategyRules").value,
       });
