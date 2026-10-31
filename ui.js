@@ -1853,6 +1853,13 @@
           <div class="field"><label>Risk distance</label><div class="static-readout" data-risk-distance>—</div><span class="hint">Target prices are derived, never stored.</span></div>
         </div>
       </div>
+      <div class="form-section" data-entry-shot-section>
+        <h3>Entry Screenshot</h3>
+        <div class="field" data-wrap="entryScreenshot">
+          <div data-entry-shot></div>
+          <span class="hint">Upload the entry chart or paste an image URL.</span>
+        </div>
+      </div>
       <div class="form-section">
         <h3>Exit Plan <span class="hint" style="text-transform:none;letter-spacing:normal;font-weight:400">Allocations must total 100%</span></h3>
         <div data-plan-host></div>
@@ -1904,6 +1911,8 @@
     const riskDistanceEl = form.querySelector("[data-risk-distance]");
     const shotHost = form.querySelector("[data-shots]");
     const shots = screenshotManager(isNew ? null : base.id, shotHost);
+    const entryShot = createScreenshotField({ initialUrl: draft.entryScreenshot || null, pasteKey: "entry" });
+    form.querySelector("[data-entry-shot]").appendChild(entryShot.element);
 
     if (timeInput && sessionInput && model.settings.autoSession && model.settings.marketTimeZone) {
       let userTouched = !isNew;
@@ -2034,6 +2043,7 @@
         if (!ok) return;
       }
       const next = formToDraft(form, draft, planEditor, resultFields, complete);
+      next.entryScreenshot = entryShot.getValue();
       if (!next.date) {
         showFormIssues(form, [{ field: "date", message: "A valid date is required.", level: "error" }]);
         return;
@@ -2138,7 +2148,14 @@
         <div><span class="label">Entry → SL</span><span>${esc(trade.entry)} → ${esc(trade.stopLoss)}</span></div>
         <div><span class="label">Exit Plan</span><span class="mono">${esc(planText)}</span></div>
       </div>
-      <div data-result-host></div>`;
+      <div data-result-host></div>
+      <div class="form-section" data-outcome-shot-section>
+        <h3>Outcome Screenshot</h3>
+        <div class="field" data-wrap="outcomeScreenshot">
+          <div data-outcome-shot></div>
+          <span class="hint">Attach the final price-action chart. This is stored separately from the entry screenshot.</span>
+        </div>
+      </div>`;
 
     const resultFields = createResultFields({
       draft,
@@ -2146,6 +2163,8 @@
       onOverride: () => {},
     });
     form.querySelector("[data-result-host]").appendChild(resultFields.element);
+    const outcomeShot = createScreenshotField({ initialUrl: draft.outcomeScreenshot || null, pasteKey: "outcome" });
+    form.querySelector("[data-outcome-shot]").appendChild(outcomeShot.element);
 
     const footer = h("div", { class: "modal-foot" });
     footer.appendChild(h("button", { type: "button", class: "btn btn-ghost", text: "Cancel", onclick: () => entry.close("cancel") }));
@@ -2165,6 +2184,7 @@
       event.preventDefault();
       const next = cloneTrade(trade);
       resultFields.read(next);
+      next.outcomeScreenshot = outcomeShot.getValue();
       next.status = "completed";
       next.updatedAt = new Date().toISOString();
       const check = A.validateTrade(next);

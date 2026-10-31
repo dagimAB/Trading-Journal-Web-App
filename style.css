@@ -2728,6 +2728,36 @@ td.editing {
 }
 
 /* Screenshots */
+.screenshot-field {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  background: var(--panel);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.screenshot-field.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.screenshot-url-input {
+  width: 100%;
+}
+
+.screenshot-preview:not(:empty) {
+  margin-bottom: 6px;
+}
+
+.screenshot-thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  border-radius: 4px;
+  border: 1px solid var(--border-soft);
+  object-fit: contain;
+}
+
 .shot-list {
   display: flex;
   flex-wrap: wrap;

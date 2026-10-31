@@ -1251,6 +1251,8 @@
         exitReason: reason,
         screenshotBefore: null,
         screenshotAfter: null,
+        entryScreenshot: null,
+        outcomeScreenshot: null,
         notes: pick([
           "London sweep + displacement.",
           "Strong HTF bearish bias.",
