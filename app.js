@@ -85,6 +85,8 @@
       setupQuality: trade.setupQuality || "",
       entry: A.toNum(trade.entry),
       stopLoss: A.toNum(trade.stopLoss),
+      wickRr: trade.wickRr !== undefined && trade.wickRr !== null && trade.wickRr !== "" ? trade.wickRr : null,
+      bodyRr: trade.bodyRr !== undefined && trade.bodyRr !== null && trade.bodyRr !== "" ? trade.bodyRr : null,
       riskR: A.toNum(trade.riskR),
       exitPlan: Array.isArray(trade.exitPlan) ? trade.exitPlan.map((l) => ({ allocation: A.toNum(l.allocation), targetR: A.toNum(l.targetR) })) : [],
       exitPlanTemplateId: trade.exitPlanTemplateId || null,

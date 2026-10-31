@@ -5,7 +5,7 @@
   const RESULT_COLUMN_KEYS = ["mfe", "mae", "remainderExitR", "finalR", "status", "exitReason", "levelsHit", "pathComplete", "waypoints", "screenshot"];
   const INLINE_FIELDS = new Set([
     "date", "time", "session", "killzone", "instrument", "direction", "setup", "setupQuality",
-    "htfBias", "htfTimeframe", "entryTimeframe", "entry", "stopLoss", "wickRr", "bodyRr", "riskR", "mfe", "mae",
+    "htfBias", "htfTimeframe", "entryTimeframe", "entry", "stopLoss", "wickSl", "bodySl", "wickRr", "bodyRr", "riskR", "mfe", "mae",
     "remainderExitR", "finalR", "exitReason", "pathComplete", "waypoints", "dataset", "notes",
   ]);
 
@@ -160,12 +160,14 @@
       case "time": return esc(trade.time || "—");
       case "entry": return fmtPrice(trade.entry, trade);
       case "stopLoss": return fmtPrice(trade.stopLoss, trade);
-      case "wickSl": {
+      case "wickSl":
+      case "wickRr": {
         const val = trade.wickRr;
         if (val === null || val === undefined || val === "") return '<span class="muted">—</span>';
         return esc(String(val));
       }
-      case "bodySl": {
+      case "bodySl":
+      case "bodyRr": {
         const val = trade.bodyRr;
         if (val === null || val === undefined || val === "") return '<span class="muted">—</span>';
         return esc(String(val));
@@ -247,8 +249,8 @@
         ? ' title="Maximum favorable excursion on the unmanaged path before the original stop. Continue the replay until the stop would have been hit for a complete path."'
         : col.key === "finalR" ? ' title="Calculated from the Exit Plan. Click to set a manual override."'
         : col.key === "status" ? ' title="Trade Status (Win / Loss / Breakeven)"'
-        : col.key === "wickSl" ? ' title="Wick Stop-Loss R:R"'
-        : col.key === "bodySl" ? ' title="Body Stop-Loss R:R"' : "";
+        : col.key === "wickSl" || col.key === "wickRr" ? ' title="Wick Stop-Loss R:R"'
+        : col.key === "bodySl" || col.key === "bodyRr" ? ' title="Body Stop-Loss R:R"' : "";
       const cellContent = col.key === "status" ? statusBadge(trade.finalR) : cellText(trade, col.key);
       return `<td class="num${right}${center}${sticky ? " sticky" : ""}"${style}${field}${title}>${cellContent}</td>`;
     }).join("");
@@ -2056,13 +2058,13 @@
         <div class="form-grid form-grid-2" style="margin-top:10px">
           <div class="field" data-wrap="wickRr">
             <label>Wick SL (R:R)</label>
-            <input type="text" name="wickRr" value="${draft.wickRr === null || draft.wickRr === undefined ? '' : esc(draft.wickRr)}" placeholder="e.g. 1:6R or 6">
+            <input type="text" name="wickRr" value="${esc(draft.wickRr || '')}" placeholder="e.g. 1:6R or 6">
             <span class="hint">Manual Wick stop R:R</span>
             <div class="field-errors" data-errors="wickRr"></div>
           </div>
           <div class="field" data-wrap="bodyRr">
             <label>Body SL (R:R)</label>
-            <input type="text" name="bodyRr" value="${draft.bodyRr === null || draft.bodyRr === undefined ? '' : esc(draft.bodyRr)}" placeholder="e.g. 1:7.5R or 7.5">
+            <input type="text" name="bodyRr" value="${esc(draft.bodyRr || '')}" placeholder="e.g. 1:7.5R or 7.5">
             <span class="hint">Manual Body stop R:R</span>
             <div class="field-errors" data-errors="bodyRr"></div>
           </div>
@@ -2131,6 +2133,18 @@
     const timeInput = form.querySelector('[name="time"]');
     const sessionInput = form.querySelector('[name="session"]');
     const riskDistanceEl = form.querySelector("[data-risk-distance]");
+    const wickRrInput = form.querySelector('[name="wickRr"]');
+    const bodyRrInput = form.querySelector('[name="bodyRr"]');
+    if (wickRrInput) {
+      const onWickChange = (e) => { draft.wickRr = e.target.value; };
+      wickRrInput.addEventListener("input", onWickChange);
+      wickRrInput.addEventListener("change", onWickChange);
+    }
+    if (bodyRrInput) {
+      const onBodyChange = (e) => { draft.bodyRr = e.target.value; };
+      bodyRrInput.addEventListener("input", onBodyChange);
+      bodyRrInput.addEventListener("change", onBodyChange);
+    }
 
     const shotHost = form.querySelector("[data-shots]");
     const shots = blind ? null : screenshotManager(isNew ? null : base.id, shotHost);
@@ -2366,10 +2380,14 @@
     next.stopLoss = A.toNum(get("stopLoss").value);
     const wickEl = form.querySelector('[name="wickRr"]');
     const bodyEl = form.querySelector('[name="bodyRr"]');
-    const wickVal = wickEl ? wickEl.value.trim() : "";
-    const bodyVal = bodyEl ? bodyEl.value.trim() : "";
+    const wickVal = wickEl ? wickEl.value.trim() : (draft && draft.wickRr !== undefined && draft.wickRr !== null ? String(draft.wickRr).trim() : "");
+    const bodyVal = bodyEl ? bodyEl.value.trim() : (draft && draft.bodyRr !== undefined && draft.bodyRr !== null ? String(draft.bodyRr).trim() : "");
     next.wickRr = wickVal ? (A.toNum(wickVal) !== null ? A.toNum(wickVal) : wickVal) : null;
     next.bodyRr = bodyVal ? (A.toNum(bodyVal) !== null ? A.toNum(bodyVal) : bodyVal) : null;
+    if (draft) {
+      draft.wickRr = next.wickRr;
+      draft.bodyRr = next.bodyRr;
+    }
     next.riskR = A.toNum(get("riskR").value);
     next.notes = get("notes").value;
     next.dataset = get("dataset") ? get("dataset").value : "";
@@ -3307,6 +3325,8 @@
   };
 
   function inlineRawValue(trade, field) {
+    if (field === "wickSl" || field === "wickRr") return trade.wickRr === null || trade.wickRr === undefined ? "" : trade.wickRr;
+    if (field === "bodySl" || field === "bodyRr") return trade.bodyRr === null || trade.bodyRr === undefined ? "" : trade.bodyRr;
     if (field === "mfe" || field === "mae") return trade.tradePath && trade.tradePath[field] !== null && trade.tradePath[field] !== undefined ? trade.tradePath[field] : "";
     if (field === "finalR") return A.toNum(trade.finalROverride) === null ? "" : trade.finalROverride;
     if (field === "pathComplete") return trade.tradePath && trade.tradePath.pathComplete ? "true" : "false";
@@ -3398,6 +3418,10 @@
           }
           patch[field] = num;
         }
+      } else if (field === "wickSl" || field === "wickRr") {
+        patch.wickRr = raw.trim() ? (A.toNum(raw) !== null ? A.toNum(raw) : raw.trim()) : null;
+      } else if (field === "bodySl" || field === "bodyRr") {
+        patch.bodyRr = raw.trim() ? (A.toNum(raw) !== null ? A.toNum(raw) : raw.trim()) : null;
       } else {
         patch[field] = raw;
       }

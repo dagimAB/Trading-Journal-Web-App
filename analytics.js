@@ -1336,8 +1336,8 @@
     if (key === "mfe") return toNum(trade.tradePath && trade.tradePath.mfe);
     if (key === "mae") return toNum(trade.tradePath && trade.tradePath.mae);
     if (key === "finalR" || key === "status") return finalR(trade);
-    if (key === "wickSl") return parseRrVal(trade.wickRr);
-    if (key === "bodySl") return parseRrVal(trade.bodyRr);
+    if (key === "wickSl" || key === "wickRr") return parseRrVal(trade.wickRr);
+    if (key === "bodySl" || key === "bodyRr") return parseRrVal(trade.bodyRr);
     if (key === "direction") return trade.direction || "";
     if (key === "setup") return setupComponents(trade).join(", ");
     if (key === "instrument") return trade.instrument || "";
