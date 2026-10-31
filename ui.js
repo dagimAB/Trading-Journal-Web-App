@@ -413,6 +413,8 @@
 
     if (!completed) {
       secondary.innerHTML = "";
+      const rvpEl = byId("dash-runner-vs-partials");
+      if (rvpEl) { rvpEl.innerHTML = ""; rvpEl.style.display = "none"; }
       return;
     }
     const hits = A.targetHitRates(filtered, model.settings.thresholds, { onlyCompletePath: model.settings.onlyCompletePath });
@@ -424,6 +426,75 @@
       `<span class="mini"><span>Best / Worst</span><b>${fmtSigned(stats.bestTrade)} / ${fmtSigned(stats.worstTrade)}</b></span>`,
       `<span class="mini"><span>Streaks</span><b>${stats.longestWinStreak}W · ${stats.longestLoseStreak}L</b></span>`,
     ].concat(hits.map((rate) => `<span class="mini"><span>${A.formatTargetR(rate.threshold)}R hit</span><b>${rate.rate === null ? "—" : fmtPct(rate.rate)}</b><span class="faint">${rate.hits}/${rate.total}</span></span>`)).join("");
+
+    const rvp = stats.runnerVsPartials || A.compareFullTargetVsPartials(filtered, { breakevenTolerance: model.settings.breakevenTolerance });
+    const rvpEl = byId("dash-runner-vs-partials");
+    if (rvpEl) {
+      if (!rvp || !rvp.winCount) {
+        rvpEl.innerHTML = "";
+        rvpEl.style.display = "none";
+      } else {
+        rvpEl.style.display = "block";
+        const badge = rvp.recommendation === "runners"
+          ? '<span class="pill pill-win">Full Runners Outperforming</span>'
+          : rvp.recommendation === "partials"
+            ? '<span class="pill pill-accent">Partials Outperforming</span>'
+            : '<span class="pill pill-be">Equal Edge</span>';
+
+        const varianceSign = rvp.varianceR > 0 ? "+" : "";
+
+        rvpEl.innerHTML = `
+          <div class="dash-runner-card">
+            <div class="dash-runner-head">
+              <div class="dash-runner-title">
+                <span class="dash-runner-icon">⚡</span>
+                <div>
+                  <h4>Full Target vs. Actual Partials</h4>
+                  <span class="muted">Theoretical runner performance if all winning trades ran 100% to final target</span>
+                </div>
+              </div>
+              <div class="dash-runner-head-right">
+                ${badge}
+                <button type="button" class="btn btn-ghost btn-small" data-view-runner-tab="1">View breakdown →</button>
+              </div>
+            </div>
+            <div class="dash-runner-metrics">
+              <div class="dash-card">
+                <div class="dash-card-label">Total Realized R (With Partials)</div>
+                <div class="dash-card-value ${signedClass(rvp.totalRealizedR)}">${fmtSigned(rvp.totalRealizedR)}</div>
+                <div class="dash-card-sub">Actual exits across ${rvp.winCount} winning trades</div>
+              </div>
+              <div class="dash-card">
+                <div class="dash-card-label">Total Potential R (Without Partials / Full Runner)</div>
+                <div class="dash-card-value ${signedClass(rvp.totalPotentialR)}">${fmtSigned(rvp.totalPotentialR)}</div>
+                <div class="dash-card-sub">100% position to final target (avg +${A.formatNumber(rvp.avgPotentialR, 2)}R)</div>
+              </div>
+              <div class="dash-card">
+                <div class="dash-card-label">Variance / Opportunity Cost</div>
+                <div class="dash-card-value ${signedClass(rvp.varianceR)}">${varianceSign}${A.formatNumber(rvp.varianceR, 2)}R</div>
+                <div class="dash-card-sub">${rvp.varianceR >= 0 ? "Potential gain by holding runners" : "Gain preserved by taking partials"}</div>
+              </div>
+            </div>
+            <div class="dash-runner-insight">
+              <p>${esc(rvp.summaryText)}</p>
+            </div>
+          </div>
+        `;
+        const viewBtn = rvpEl.querySelector('[data-view-runner-tab="1"]');
+        if (viewBtn) {
+          viewBtn.addEventListener("click", () => {
+            model.analyticsTab = "runner-vs-partials";
+            const tabsWrap = byId("analytics-tabs");
+            if (tabsWrap) {
+              tabsWrap.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === "runner-vs-partials"));
+            }
+            renderAnalytics();
+            const anSec = byId("analytics");
+            if (anSec) anSec.scrollIntoView({ behavior: "smooth" });
+          });
+        }
+      }
+    }
   }
 
   function chartColors() {
@@ -992,6 +1063,88 @@
           <span class="muted">${selected.length} plan${selected.length === 1 ? "" : "s"} selected</span>
         </div>
         ${comparisonTableHTML(results)}`;
+      return;
+    }
+
+    if (tab === "runner-vs-partials") {
+      const rvp = A.compareFullTargetVsPartials(trades, opts);
+      const badge = rvp.recommendation === "runners"
+        ? '<span class="pill pill-win">Holding Runners Advantage</span>'
+        : rvp.recommendation === "partials"
+          ? '<span class="pill pill-accent">Scaling Out Advantage</span>'
+          : '<span class="pill pill-be">Equal Edge</span>';
+
+      const varianceSign = rvp.varianceR > 0 ? "+" : "";
+
+      body.innerHTML = `
+        <div class="analytics-toolbar">
+          <span>Full Target vs. Actual Partials · Evaluated across ${rvp.winCount} winning trade${rvp.winCount === 1 ? '' : 's'} (${rvp.totalCompleted} completed total).</span>
+          <div>${badge}</div>
+        </div>
+
+        <div class="sl-opt-summary-banner ${rvp.recommendation === 'runners' ? 'winner-body' : rvp.recommendation === 'partials' ? 'winner-wick' : ''}">
+          <div class="sl-opt-summary-title">
+            <span>Variance / Opportunity Cost:</span>
+            <b class="mono ${rvp.varianceR > 0 ? 'pos' : rvp.varianceR < 0 ? 'neg' : 'zero'}">${varianceSign}${A.formatNumber(rvp.varianceR, 2)}R</b>
+            <span class="muted" style="font-weight:400">(${varianceSign}${A.formatNumber(rvp.avgVarianceR, 2)}R / win)</span>
+          </div>
+          <p class="sl-opt-summary-desc">${esc(rvp.summaryText)}</p>
+        </div>
+
+        <div class="dash-runner-metrics" style="margin-bottom:16px">
+          <div class="dash-card">
+            <div class="dash-card-label">Total Realized R (With Partials)</div>
+            <div class="dash-card-value ${signedClass(rvp.totalRealizedR)}">${fmtSigned(rvp.totalRealizedR)}</div>
+            <div class="dash-card-sub">Actual exits (avg +${A.formatNumber(rvp.avgRealizedR, 2)}R / win)</div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-label">Total Potential R (Without Partials / Full Runner)</div>
+            <div class="dash-card-value ${signedClass(rvp.totalPotentialR)}">${fmtSigned(rvp.totalPotentialR)}</div>
+            <div class="dash-card-sub">100% position to final target (avg +${A.formatNumber(rvp.avgPotentialR, 2)}R)</div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-label">Variance / Opportunity Cost</div>
+            <div class="dash-card-value ${signedClass(rvp.varianceR)}">${varianceSign}${A.formatNumber(rvp.varianceR, 2)}R</div>
+            <div class="dash-card-sub">${rvp.varianceR >= 0 ? "Potential gain by holding runners" : "Gain preserved by taking partials"}</div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-label">Net Overall R Impact</div>
+            <div class="dash-card-value ${signedClass(rvp.allNetPotentialR)}">${fmtSigned(rvp.allNetPotentialR)}</div>
+            <div class="dash-card-sub">Realized net: ${fmtSigned(rvp.allNetRealizedR)}</div>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Trade</th>
+                <th>Exit Plan</th>
+                <th class="num">Final Target / Max R</th>
+                <th class="num">Realized R (Partials)</th>
+                <th class="num">Potential R (Full Runner)</th>
+                <th class="num">Variance (Δ R)</th>
+                <th>Strategy Edge</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rvp.rows.map(r => `<tr>
+                <td class="mono">#${esc(r.trade.tradeNumber || r.trade.id)} ${esc(r.trade.instrument || '')} <span class="muted">${esc(r.trade.direction || '')}</span></td>
+                <td><span class="plan-cell">${esc(r.planLabel)}</span></td>
+                <td class="num">${A.formatTargetR(r.maxTargetR)}R</td>
+                <td class="num ${signedClass(r.realizedR)}"><b>${fmtSigned(r.realizedR)}</b></td>
+                <td class="num ${signedClass(r.potentialR)}"><b>${fmtSigned(r.potentialR)}</b></td>
+                <td class="num ${signedClass(r.varianceR)}">${r.varianceR > 0 ? '+' : ''}${A.formatNumber(r.varianceR, 2)}R</td>
+                <td>${r.varianceR > 0
+                  ? '<span class="pill pill-win">Runner +</span>'
+                  : r.varianceR < 0
+                    ? '<span class="pill pill-accent">Partials +</span>'
+                    : '<span class="pill pill-be">Equal</span>'}</td>
+              </tr>`).join('') || '<tr><td colspan="7" class="center muted">No winning trades match the active filters.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      `;
       return;
     }
 

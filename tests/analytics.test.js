@@ -539,6 +539,45 @@ test("compareSlOptimization computes side-by-side metrics and expectancy differe
   assert.ok(["body", "wick", "tie"].includes(comparison.diff.winner));
 });
 
+test("compareFullTargetVsPartials calculates theoretical Full Runner R vs Realized R on winning trades", () => {
+  const trades = [
+    baseTrade({
+      entry: 100,
+      stopLoss: 95,
+      exitPlan: [
+        { allocation: 0.5, targetR: 2 },
+        { allocation: 0.5, targetR: 6 },
+      ],
+      tradePath: { mfe: 6.5, mae: 0.2, pathComplete: true },
+    }), // both hit -> Realized R = 0.5*2 + 0.5*6 = 4.0R. Full runner potential = 6.0R. Variance = +2.0R.
+    baseTrade({
+      entry: 100,
+      stopLoss: 95,
+      exitPlan: [
+        { allocation: 1.0, targetR: 3 },
+      ],
+      tradePath: { mfe: 4, mae: 0.1, pathComplete: true },
+    }), // single target -> Realized R = 3.0R. Full runner potential = 3.0R. Variance = 0.0R.
+    baseTrade({
+      entry: 100,
+      stopLoss: 95,
+      tradePath: { mfe: 0.2, mae: 1.0, pathComplete: true },
+      exitReason: "SL",
+      finalROverride: -1,
+    }), // losing trade -> excluded from winning trades
+  ];
+
+  const res = A.compareFullTargetVsPartials(trades);
+  assert.strictEqual(res.winCount, 2);
+  assert.strictEqual(res.totalRealizedR, 7.0); // 4 + 3
+  assert.strictEqual(res.totalPotentialR, 9.0); // 6 + 3
+  assert.strictEqual(res.varianceR, 2.0); // 9 - 7
+  assert.strictEqual(res.recommendation, "runners");
+  assert.strictEqual(res.allNetRealizedR, 6.0); // 7 - 1
+  assert.strictEqual(res.allNetPotentialR, 8.0); // 9 - 1
+  assert.strictEqual(res.rows.length, 2);
+});
+
 test("performance: 5,000 trades compute under 2000ms", () => {
   const trades = A.generateDemoTrades(5000, { seed: 99 });
   const started = Date.now();

@@ -616,6 +616,7 @@
       points: curve.points,
       longestWinStreak: streaks.longestWin,
       longestLoseStreak: streaks.longestLose,
+      runnerVsPartials: compareFullTargetVsPartials(completed, opts),
       ordered,
     };
   }
@@ -1078,6 +1079,118 @@
         summaryText,
       },
       trades: comparisonRows,
+    };
+  }
+
+  function compareFullTargetVsPartials(trades, options) {
+    const opts = options || {};
+    const tolerance = opts.breakevenTolerance !== undefined ? opts.breakevenTolerance : 0;
+    const completed = (trades || []).filter((t) => finalR(t) !== null);
+
+    const winningTrades = completed.filter((t) => {
+      const r = finalR(t);
+      return classify(r, tolerance) === "win";
+    });
+
+    if (!winningTrades.length) {
+      const allResults = completed.map((t) => finalR(t));
+      const allNet = allResults.length ? clampNumber(allResults.reduce((a, b) => a + b, 0), 2) : 0;
+      return {
+        winCount: 0,
+        totalCompleted: completed.length,
+        totalRealizedR: 0,
+        totalPotentialR: 0,
+        varianceR: 0,
+        allNetRealizedR: allNet,
+        allNetPotentialR: allNet,
+        avgRealizedR: 0,
+        avgPotentialR: 0,
+        avgVarianceR: 0,
+        recommendation: "none",
+        summaryText: "No completed winning trades to evaluate yet.",
+        rows: [],
+      };
+    }
+
+    let totalRealizedR = 0;
+    let totalPotentialR = 0;
+    const rows = [];
+
+    winningTrades.forEach((t) => {
+      const realizedR = clampNumber(finalR(t), 2);
+      const risk = riskFactor(t);
+      const levels = normalizeLevels(t.exitPlan);
+
+      const candidates = [];
+      levels.forEach((l) => {
+        const tr = toNum(l.targetR);
+        if (tr !== null && tr > 0) candidates.push(tr);
+      });
+
+      const wR = parseRrVal(t.wickRr);
+      if (wR !== null && wR > 0) candidates.push(wR);
+      const bR = parseRrVal(t.bodyRr);
+      if (bR !== null && bR > 0) candidates.push(bR);
+
+      let maxTargetR = candidates.length ? Math.max(...candidates) : null;
+      let potentialR = maxTargetR !== null ? clampNumber(maxTargetR * risk, 2) : realizedR;
+      if (potentialR < realizedR) potentialR = realizedR;
+
+      const varianceR = clampNumber(potentialR - realizedR, 2);
+
+      totalRealizedR += realizedR;
+      totalPotentialR += potentialR;
+
+      rows.push({
+        trade: t,
+        planLabel: planString(levels) || "100% @ 1R",
+        maxTargetR: maxTargetR !== null ? maxTargetR : realizedR,
+        realizedR,
+        potentialR,
+        varianceR,
+      });
+    });
+
+    totalRealizedR = clampNumber(totalRealizedR, 2);
+    totalPotentialR = clampNumber(totalPotentialR, 2);
+    const varianceR = clampNumber(totalPotentialR - totalRealizedR, 2);
+
+    const allResults = completed.map((t) => finalR(t));
+    const allNetRealizedR = allResults.length ? clampNumber(allResults.reduce((a, b) => a + b, 0), 2) : 0;
+    const allNetPotentialR = clampNumber(allNetRealizedR + varianceR, 2);
+
+    const winCount = winningTrades.length;
+    const avgRealizedR = winCount > 0 ? clampNumber(totalRealizedR / winCount, 2) : 0;
+    const avgPotentialR = winCount > 0 ? clampNumber(totalPotentialR / winCount, 2) : 0;
+    const avgVarianceR = winCount > 0 ? clampNumber(varianceR / winCount, 2) : 0;
+
+    let recommendation = "neutral";
+    let summaryText = "Realized exits and full runners produced identical returns.";
+    if (varianceR > 0.05) {
+      recommendation = "runners";
+      summaryText = `Holding full runners to the final target would have generated +${formatR(varianceR)} more profit (+${formatR(avgVarianceR)} / win). Taking partials is leaving substantial money on the table for your winning setups.`;
+    } else if (varianceR < -0.05) {
+      recommendation = "partials";
+      summaryText = `Scaling out with partials outperformed full runners by +${formatR(Math.abs(varianceR))} (+${formatR(Math.abs(avgVarianceR))} / win). Securing partial profits protected gains against retracements.`;
+    } else {
+      recommendation = "equal";
+      summaryText = "Both approaches produced virtually identical returns on this dataset.";
+    }
+
+    return {
+      winCount,
+      totalCompleted: completed.length,
+      totalRealizedR,
+      totalPotentialR,
+      varianceR,
+      allNetRealizedR,
+      allNetPotentialR,
+      avgRealizedR,
+      avgPotentialR,
+      avgVarianceR,
+      recommendation,
+      summaryText,
+      rows,
     };
   }
 
@@ -1624,6 +1737,7 @@
     evaluatePlanForTrade,
     simulatedPlanComparison,
     compareSlOptimization,
+    compareFullTargetVsPartials,
     calcRr,
     formatRr,
     parseRrVal,
