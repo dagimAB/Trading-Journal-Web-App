@@ -124,9 +124,20 @@
         return `<span class="mono">#${trade.tradeNumber || "—"}</span>${trade.isDemo ? ' <span class="pill" title="Demo data">D</span>' : ""}${trade.isCopy ? ' <span class="pill" title="Copy of another trade">C</span>' : ""}`;
       case "date": return esc(trade.date || "—");
       case "day": return esc(trade.day || "—");
-      case "session": return esc(trade.session || "—");
+      case "instrument": {
+        const ins = trade.instrument || "";
+        const insKey = ins.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const insClass = ["nas100","us500","xauusd","eurusd","gbpusd"].includes(insKey) ? " pill-ins-" + insKey : "";
+        return ins ? `<span class="pill${insClass}">${esc(ins)}</span>` : "—";
+      }
+      case "session": {
+        const ses = trade.session || "";
+        const sesKey = ses.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+        const sesMap = { "asia": "asia", "london": "london", "new-york-am": "nyam", "new-york-pm": "nypm" };
+        const sesClass = sesMap[sesKey] ? " pill-ses-" + sesMap[sesKey] : "";
+        return ses ? `<span class="pill${sesClass}">${esc(ses)}</span>` : "—";
+      }
       case "killzone": return esc(trade.killzone || "—");
-      case "instrument": return esc(trade.instrument || "—");
       case "direction":
         return trade.direction === "Long" ? '<span class="pos">Long</span>' : trade.direction === "Short" ? '<span class="neg">Short</span>' : "—";
       case "setup": return esc(A.setupComponents(trade).join(" + ") || "—");
@@ -2126,7 +2137,17 @@
     if (!title || !body) return;
 
     title.textContent = "Trade #" + (trade.tradeNumber || "—");
-    sub.textContent = [trade.date, trade.time, trade.instrument, trade.direction, trade.session].filter(Boolean).join(" · ");
+    // Render instrument + session as colored pills in the sub-heading
+    const insKey = (trade.instrument || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const insClass = ["nas100","us500","xauusd","eurusd","gbpusd"].includes(insKey) ? " pill-ins-" + insKey : "";
+    const sesRaw = trade.session || "";
+    const sesKey = sesRaw.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const sesMap = { "asia": "asia", "london": "london", "new-york-am": "nyam", "new-york-pm": "nypm" };
+    const sesClass = sesMap[sesKey] ? " pill-ses-" + sesMap[sesKey] : "";
+    const insPill = trade.instrument ? `<span class="pill${insClass}">${esc(trade.instrument)}</span>` : "";
+    const sesPill = sesRaw ? `<span class="pill${sesClass}">${esc(sesRaw)}</span>` : "";
+    const subParts = [trade.date, trade.time, trade.direction].filter(Boolean).map(esc).join(" · ");
+    sub.innerHTML = (subParts ? subParts + " · " : "") + [insPill, sesPill].filter(Boolean).join(" ");
 
     const levels = A.normalizeLevels(trade.exitPlan);
     const hits = A.levelHitState(trade);

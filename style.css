@@ -30,6 +30,44 @@
   --header-h: 62px;
   --row-h: 33px;
   color-scheme: dark;
+
+  /* Instrument colors */
+  --ins-nas100-text:  #6ab0f5;
+  --ins-nas100-bg:    rgba(106, 176, 245, 0.12);
+  --ins-nas100-border:rgba(106, 176, 245, 0.28);
+
+  --ins-us500-text:   #4ec9c9;
+  --ins-us500-bg:     rgba(78, 201, 201, 0.12);
+  --ins-us500-border: rgba(78, 201, 201, 0.28);
+
+  --ins-xauusd-text:  #d9a441;
+  --ins-xauusd-bg:    rgba(217, 164, 65, 0.12);
+  --ins-xauusd-border:rgba(217, 164, 65, 0.28);
+
+  --ins-eurusd-text:  #a58ce0;
+  --ins-eurusd-bg:    rgba(165, 140, 224, 0.12);
+  --ins-eurusd-border:rgba(165, 140, 224, 0.28);
+
+  --ins-gbpusd-text:  #e07a9a;
+  --ins-gbpusd-bg:    rgba(224, 122, 154, 0.12);
+  --ins-gbpusd-border:rgba(224, 122, 154, 0.28);
+
+  /* Session colors */
+  --ses-asia-text:    #6878e0;
+  --ses-asia-bg:      rgba(104, 120, 224, 0.12);
+  --ses-asia-border:  rgba(104, 120, 224, 0.28);
+
+  --ses-london-text:  #e09640;
+  --ses-london-bg:    rgba(224, 150, 64, 0.12);
+  --ses-london-border:rgba(224, 150, 64, 0.28);
+
+  --ses-nyam-text:    #57c7a0;
+  --ses-nyam-bg:      rgba(87, 199, 160, 0.12);
+  --ses-nyam-border:  rgba(87, 199, 160, 0.28);
+
+  --ses-nypm-text:    #40c4b0;
+  --ses-nypm-bg:      rgba(64, 196, 176, 0.12);
+  --ses-nypm-border:  rgba(64, 196, 176, 0.28);
 }
 
 [data-theme="light"] {
@@ -58,6 +96,44 @@
   --shadow: 0 18px 50px rgba(20, 30, 45, 0.16);
   --shadow-soft: 0 6px 18px rgba(20, 30, 45, 0.09);
   color-scheme: light;
+
+  /* Instrument colors — light mode (deeper text, lighter bg) */
+  --ins-nas100-text:  #1a5db5;
+  --ins-nas100-bg:    rgba(26, 93, 181, 0.08);
+  --ins-nas100-border:rgba(26, 93, 181, 0.22);
+
+  --ins-us500-text:   #0e7a7a;
+  --ins-us500-bg:     rgba(14, 122, 122, 0.08);
+  --ins-us500-border: rgba(14, 122, 122, 0.22);
+
+  --ins-xauusd-text:  #8a5c00;
+  --ins-xauusd-bg:    rgba(138, 92, 0, 0.08);
+  --ins-xauusd-border:rgba(138, 92, 0, 0.22);
+
+  --ins-eurusd-text:  #5b3d9e;
+  --ins-eurusd-bg:    rgba(91, 61, 158, 0.08);
+  --ins-eurusd-border:rgba(91, 61, 158, 0.22);
+
+  --ins-gbpusd-text:  #9e2d5a;
+  --ins-gbpusd-bg:    rgba(158, 45, 90, 0.08);
+  --ins-gbpusd-border:rgba(158, 45, 90, 0.22);
+
+  /* Session colors — light mode */
+  --ses-asia-text:    #2c3baa;
+  --ses-asia-bg:      rgba(44, 59, 170, 0.08);
+  --ses-asia-border:  rgba(44, 59, 170, 0.22);
+
+  --ses-london-text:  #8a4a00;
+  --ses-london-bg:    rgba(138, 74, 0, 0.08);
+  --ses-london-border:rgba(138, 74, 0, 0.22);
+
+  --ses-nyam-text:    #0e6b50;
+  --ses-nyam-bg:      rgba(14, 107, 80, 0.08);
+  --ses-nyam-border:  rgba(14, 107, 80, 0.22);
+
+  --ses-nypm-text:    #0a6b60;
+  --ses-nypm-bg:      rgba(10, 107, 96, 0.08);
+  --ses-nypm-border:  rgba(10, 107, 96, 0.22);
 }
 
 * {
@@ -410,6 +486,19 @@ textarea {
   background: var(--neg-soft);
   border-color: color-mix(in srgb, var(--neg) 35%, transparent);
 }
+
+/* Instrument pills */
+.pill-ins-nas100  { color: var(--ins-nas100-text);  background: var(--ins-nas100-bg);  border-color: var(--ins-nas100-border); }
+.pill-ins-us500   { color: var(--ins-us500-text);   background: var(--ins-us500-bg);   border-color: var(--ins-us500-border); }
+.pill-ins-xauusd  { color: var(--ins-xauusd-text);  background: var(--ins-xauusd-bg);  border-color: var(--ins-xauusd-border); }
+.pill-ins-eurusd  { color: var(--ins-eurusd-text);  background: var(--ins-eurusd-bg);  border-color: var(--ins-eurusd-border); }
+.pill-ins-gbpusd  { color: var(--ins-gbpusd-text);  background: var(--ins-gbpusd-bg);  border-color: var(--ins-gbpusd-border); }
+
+/* Session pills */
+.pill-ses-asia    { color: var(--ses-asia-text);    background: var(--ses-asia-bg);    border-color: var(--ses-asia-border); }
+.pill-ses-london  { color: var(--ses-london-text);  background: var(--ses-london-bg);  border-color: var(--ses-london-border); }
+.pill-ses-nyam    { color: var(--ses-nyam-text);    background: var(--ses-nyam-bg);    border-color: var(--ses-nyam-border); }
+.pill-ses-nypm    { color: var(--ses-nypm-text);    background: var(--ses-nypm-bg);    border-color: var(--ses-nypm-border); }
 
 .badge {
   min-width: 16px;
