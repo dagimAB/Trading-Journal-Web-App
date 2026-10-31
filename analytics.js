@@ -77,6 +77,8 @@
     { key: "time", label: "Time", default: false, width: 78 },
     { key: "entry", label: "Entry", default: true, width: 102, sortable: true, numeric: true },
     { key: "stopLoss", label: "SL", default: true, width: 102, sortable: true, numeric: true },
+    { key: "wickSl", label: "Wick SL", default: true, width: 130, sortable: true },
+    { key: "bodySl", label: "Body SL", default: true, width: 130, sortable: true },
     { key: "riskR", label: "Risk", default: true, width: 74, numeric: true },
     { key: "exitPlan", label: "Exit Plan", default: true, width: 176 },
     { key: "planTemplate", label: "Plan Name", default: false, width: 132 },
@@ -126,6 +128,23 @@
 
   function targetPriceForTrade(trade, targetR) {
     return targetPrice(trade && trade.entry, trade && trade.stopLoss, trade && trade.direction, targetR);
+  }
+
+  function calcRr(entry, stopLoss, targetPriceVal) {
+    const e = toNum(entry);
+    const sl = toNum(stopLoss);
+    const tp = toNum(targetPriceVal);
+    if (e === null || sl === null || tp === null) return null;
+    const riskDist = Math.abs(e - sl);
+    const rewardDist = Math.abs(tp - e);
+    if (riskDist <= 0 || rewardDist <= 0) return null;
+    return clampNumber(rewardDist / riskDist, 2);
+  }
+
+  function formatRr(rr) {
+    const n = toNum(rr);
+    if (n === null) return "—";
+    return "1:" + Number(n).toFixed(1) + "R";
   }
 
   function parseISODate(dateStr) {
@@ -408,8 +427,27 @@
     const levels = normalizeLevels(trade && trade.exitPlan);
     const hits = levelHitState(trade);
     const result = finalR(trade);
+    const slType = trade && trade.slType ? trade.slType : "wick";
+    const wickSlPrice = toNum(trade && trade.wickSlPrice) !== null
+      ? toNum(trade.wickSlPrice)
+      : (slType === "wick" || !trade || !trade.slType ? toNum(trade && trade.stopLoss) : null);
+    const bodySlPrice = toNum(trade && trade.bodySlPrice) !== null
+      ? toNum(trade.bodySlPrice)
+      : (slType === "body" ? toNum(trade && trade.stopLoss) : null);
+    let targetP = toNum(trade && trade.targetPrice);
+    if (targetP === null && levels.length) {
+      targetP = targetPriceForTrade(trade, levels[levels.length - 1].targetR);
+    }
+    const wickRr = toNum(trade && trade.wickRr) !== null ? toNum(trade.wickRr) : calcRr(trade && trade.entry, wickSlPrice, targetP);
+    const bodyRr = toNum(trade && trade.bodyRr) !== null ? toNum(trade.bodyRr) : calcRr(trade && trade.entry, bodySlPrice, targetP);
     return {
       ...trade,
+      slType,
+      wickSlPrice,
+      bodySlPrice,
+      targetPrice: targetP,
+      wickRr,
+      bodyRr,
       day: dayOfWeek(trade && trade.date),
       rDistance: rDistance(trade),
       exitPlanLevels: levels,
@@ -840,6 +878,191 @@
     });
   }
 
+  function compareSlOptimization(trades, options) {
+    const opts = options || {};
+    const tol = Math.abs(toNum(opts.breakevenTolerance) || 0);
+
+    const completed = (trades || []).filter((t) => finalR(t) !== null);
+    if (!completed.length) {
+      return {
+        total: 0,
+        wick: { winRate: null, totalR: 0, expectancy: null, stopOutFreq: null, wins: 0, losses: 0, breakevens: 0, stopOuts: 0 },
+        body: { winRate: null, totalR: 0, expectancy: null, stopOutFreq: null, wins: 0, losses: 0, breakevens: 0, stopOuts: 0 },
+        diff: { expectancy: 0, winRate: 0, totalR: 0, stopOutFreq: 0, winner: "tie", summaryText: "No completed trades to evaluate." },
+        trades: [],
+      };
+    }
+
+    const targetTrades = completed.map((t) => {
+      const entry = toNum(t.entry);
+      const sl = toNum(t.stopLoss);
+      if (entry === null || sl === null) return null;
+      const dir = t.direction === "Short" ? "Short" : "Long";
+      const dist = Math.abs(entry - sl);
+      if (dist <= 0) return null;
+
+      let wickSl = toNum(t.wickSlPrice);
+      let bodySl = toNum(t.bodySlPrice);
+
+      if (wickSl === null && bodySl === null) {
+        wickSl = sl;
+        const bodyDist = dist * 0.75;
+        bodySl = dir === "Long" ? entry - bodyDist : entry + bodyDist;
+      } else if (wickSl === null) {
+        const bodyDist = Math.abs(entry - bodySl);
+        const wickDist = bodyDist * 1.333;
+        wickSl = dir === "Long" ? entry - wickDist : entry + wickDist;
+      } else if (bodySl === null) {
+        const wickDist = Math.abs(entry - wickSl);
+        const bodyDist = wickDist * 0.75;
+        bodySl = dir === "Long" ? entry - bodyDist : entry + bodyDist;
+      }
+
+      return {
+        trade: t,
+        entry,
+        direction: dir,
+        slType: t.slType || "wick",
+        wickSl,
+        bodySl,
+      };
+    }).filter(Boolean);
+
+    let wickWins = 0, wickLosses = 0, wickBes = 0, wickStopOuts = 0;
+    let wickRValues = [];
+    let bodyWins = 0, bodyLosses = 0, bodyBes = 0, bodyStopOuts = 0;
+    let bodyRValues = [];
+    const comparisonRows = [];
+
+    targetTrades.forEach(({ trade: t, entry, wickSl, bodySl, slType }) => {
+      const wickDist = Math.abs(entry - wickSl);
+      const bodyDist = Math.abs(entry - bodySl);
+      if (wickDist <= 0 || bodyDist <= 0) return;
+
+      const ratio = wickDist / bodyDist;
+      const maeR = toNum(t.tradePath && t.tradePath.mae);
+      const execFinalR = finalR(t);
+
+      // 1. Evaluate Wick SL Model
+      let wR = 0;
+      let wStopped = false;
+      if (slType === "wick") {
+        wR = execFinalR;
+        wStopped = t.exitReason === "SL" || (maeR !== null && maeR >= 1.0) || execFinalR <= -0.99;
+      } else {
+        if (maeR !== null && maeR >= ratio) {
+          wR = -1.0;
+          wStopped = true;
+        } else if (t.exitReason === "SL" && (maeR === null || maeR < ratio)) {
+          wR = toNum(t.wickRr) !== null ? toNum(t.wickRr) : 0;
+          wStopped = false;
+        } else {
+          wR = execFinalR / ratio;
+          wStopped = false;
+        }
+      }
+
+      // 2. Evaluate Body SL Model
+      let bR = 0;
+      let bStopped = false;
+      if (slType === "body") {
+        bR = execFinalR;
+        bStopped = t.exitReason === "SL" || (maeR !== null && maeR >= 1.0) || execFinalR <= -0.99;
+      } else {
+        const bodyThresholdInWickR = 1.0 / ratio;
+        if (maeR !== null && maeR >= bodyThresholdInWickR) {
+          bR = -1.0;
+          bStopped = true;
+        } else if (t.exitReason === "SL") {
+          bR = -1.0;
+          bStopped = true;
+        } else {
+          bR = execFinalR * ratio;
+          bStopped = false;
+        }
+      }
+
+      wR = clampNumber(wR, 2);
+      bR = clampNumber(bR, 2);
+
+      wickRValues.push(wR);
+      if (wStopped) wickStopOuts++;
+      if (wR > tol) wickWins++;
+      else if (wR < -tol) wickLosses++;
+      else wickBes++;
+
+      bodyRValues.push(bR);
+      if (bStopped) bodyStopOuts++;
+      if (bR > tol) bodyWins++;
+      else if (bR < -tol) bodyLosses++;
+      else bodyBes++;
+
+      comparisonRows.push({
+        trade: t,
+        wickSlPrice: wickSl,
+        bodySlPrice: bodySl,
+        slType,
+        wickR: wR,
+        bodyR: bR,
+        diffR: clampNumber(bR - wR, 2),
+        wickStopped: wStopped,
+        bodyStopped: bStopped,
+      });
+    });
+
+    const total = targetTrades.length;
+    const wickTotalR = clampNumber(wickRValues.reduce((a, b) => a + b, 0), 2);
+    const bodyTotalR = clampNumber(bodyRValues.reduce((a, b) => a + b, 0), 2);
+    const wickExp = total > 0 ? clampNumber(wickTotalR / total, 3) : 0;
+    const bodyExp = total > 0 ? clampNumber(bodyTotalR / total, 3) : 0;
+    const expDiff = clampNumber(bodyExp - wickExp, 3);
+    const winRateDiff = total > 0 ? clampNumber(((bodyWins - wickWins) / total) * 100, 1) : 0;
+    const stopOutDiff = total > 0 ? clampNumber(((bodyStopOuts - wickStopOuts) / total) * 100, 1) : 0;
+
+    let winner = "tie";
+    let summaryText = "Both placement methods produce identical net expectancy on this dataset.";
+    if (expDiff > 0.001) {
+      winner = "body";
+      summaryText = `Tighter Body SL outperforms Wick SL by +${formatR(expDiff)} expectancy per trade. The amplified reward on wins outweighs the extra stop-outs.`;
+    } else if (expDiff < -0.001) {
+      winner = "wick";
+      summaryText = `Safer Wick SL outperforms Body SL by +${formatR(Math.abs(expDiff))} expectancy per trade. Protecting against premature stop-outs generates superior long-term edge.`;
+    }
+
+    return {
+      total,
+      wick: {
+        totalR: wickTotalR,
+        expectancy: wickExp,
+        winRate: total > 0 ? clampNumber((wickWins / total) * 100, 1) : null,
+        stopOutFreq: total > 0 ? clampNumber((wickStopOuts / total) * 100, 1) : null,
+        wins: wickWins,
+        losses: wickLosses,
+        breakevens: wickBes,
+        stopOuts: wickStopOuts,
+      },
+      body: {
+        totalR: bodyTotalR,
+        expectancy: bodyExp,
+        winRate: total > 0 ? clampNumber((bodyWins / total) * 100, 1) : null,
+        stopOutFreq: total > 0 ? clampNumber((bodyStopOuts / total) * 100, 1) : null,
+        wins: bodyWins,
+        losses: bodyLosses,
+        breakevens: bodyBes,
+        stopOuts: bodyStopOuts,
+      },
+      diff: {
+        expectancy: expDiff,
+        winRate: winRateDiff,
+        totalR: clampNumber(bodyTotalR - wickTotalR, 2),
+        stopOutFreq: stopOutDiff,
+        winner,
+        summaryText,
+      },
+      trades: comparisonRows,
+    };
+  }
+
   function validateTrade(trade, options) {
     const opts = options || {};
     const errors = [];
@@ -1095,6 +1318,8 @@
     if (key === "mfe") return toNum(trade.tradePath && trade.tradePath.mfe);
     if (key === "mae") return toNum(trade.tradePath && trade.tradePath.mae);
     if (key === "finalR" || key === "status") return finalR(trade);
+    if (key === "wickSl") return toNum(trade.wickSlPrice || (trade.slType === "wick" ? trade.stopLoss : null));
+    if (key === "bodySl") return toNum(trade.bodySlPrice || (trade.slType === "body" ? trade.stopLoss : null));
     if (key === "direction") return trade.direction || "";
     if (key === "setup") return setupComponents(trade).join(", ");
     if (key === "instrument") return trade.instrument || "";
@@ -1258,6 +1483,14 @@
       }
       if (rand() < 0.05) finalROverride = clampNumber(rnd(-1, lastTarget), 2);
       if (rand() < 0.06) statusCompleted = false;
+      const slType = rand() > 0.4 ? "wick" : "body";
+      const dist = Math.abs(entry - stopLoss);
+      const bodyDist = clampNumber(dist * (0.68 + rand() * 0.12), decimals);
+      const wickSlPrice = slType === "wick" ? stopLoss : (direction === "Long" ? clampNumber(entry - dist * 1.35, decimals) : clampNumber(entry + dist * 1.35, decimals));
+      const bodySlPrice = slType === "body" ? stopLoss : (direction === "Long" ? clampNumber(entry - bodyDist, decimals) : clampNumber(entry + bodyDist, decimals));
+      const targetP = targetPrice(entry, stopLoss, direction, lastTarget);
+      const wickRr = calcRr(entry, wickSlPrice, targetP);
+      const bodyRr = calcRr(entry, bodySlPrice, targetP);
       const trade = {
         id: "demo-" + i + "-" + Math.random().toString(36).slice(2, 8),
         tradeNumber: i + 1,
@@ -1274,6 +1507,12 @@
         setupQuality: pick(qualities),
         entry,
         stopLoss,
+        slType,
+        wickSlPrice,
+        bodySlPrice,
+        targetPrice: targetP,
+        wickRr,
+        bodyRr,
         riskR: rand() < 0.12 ? 0.5 : 1,
         exitPlan: tpl.levels.map((l) => ({ allocation: l.allocation, targetR: l.targetR })),
         exitPlanTemplateId: tpl.id,
@@ -1373,6 +1612,9 @@
     recordedPlanComparison,
     evaluatePlanForTrade,
     simulatedPlanComparison,
+    compareSlOptimization,
+    calcRr,
+    formatRr,
     validateTrade,
     issuesFor,
     defaultExitPlan,

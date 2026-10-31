@@ -464,6 +464,68 @@ test("statusBadge helper inspects numeric final result (>0 WIN, <0 LOSS, ==0 BE)
   assert.strictEqual(A.statusBadge(null), '<span class="muted">—</span>');
 });
 
+test("dual SL schema fields, calcRr, and formatRr", () => {
+  // calcRr
+  const rrLong = A.calcRr(100, 95, 130); // risk 5, reward 30 -> 6.0R
+  assert.strictEqual(rrLong, 6);
+  assert.strictEqual(A.formatRr(rrLong), "1:6.0R");
+
+  const rrShort = A.calcRr(100, 104, 70); // risk 4, reward 30 -> 7.5R
+  assert.strictEqual(rrShort, 7.5);
+  assert.strictEqual(A.formatRr(rrShort), "1:7.5R");
+
+  // table columns include wickSl and bodySl
+  const wickCol = A.COLUMNS.find((c) => c.key === "wickSl");
+  const bodyCol = A.COLUMNS.find((c) => c.key === "bodySl");
+  assert.ok(wickCol, "Wick SL column exists");
+  assert.ok(bodyCol, "Body SL column exists");
+
+  // trade decoration populates dual SL fields
+  const trade = baseTrade({
+    entry: 100,
+    stopLoss: 95,
+    slType: "wick",
+    wickSlPrice: 95,
+    bodySlPrice: 96,
+    targetPrice: 125,
+  });
+  const dec = A.decorate(trade);
+  assert.strictEqual(dec.slType, "wick");
+  assert.strictEqual(dec.wickSlPrice, 95);
+  assert.strictEqual(dec.bodySlPrice, 96);
+  assert.strictEqual(dec.wickRr, 5); // 25 / 5 = 5.0R
+  assert.strictEqual(dec.bodyRr, 6.25); // 25 / 4 = 6.25R
+});
+
+test("compareSlOptimization computes side-by-side metrics and expectancy difference", () => {
+  const trades = [
+    baseTrade({
+      entry: 100,
+      stopLoss: 95,
+      slType: "wick",
+      wickSlPrice: 95,
+      bodySlPrice: 97.5, // 2.5 risk vs 5 risk (ratio 2.0)
+      tradePath: { mfe: 4, mae: 0.3, pathComplete: true },
+      finalROverride: 3,
+    }),
+    baseTrade({
+      entry: 100,
+      stopLoss: 95,
+      slType: "wick",
+      wickSlPrice: 95,
+      bodySlPrice: 97.5,
+      tradePath: { mfe: 1, mae: 0.6, pathComplete: true }, // mae 0.6 in wick R > 0.5 (body threshold), stopped out on body!
+      finalROverride: 1,
+    }),
+  ];
+  const comparison = A.compareSlOptimization(trades);
+  assert.strictEqual(comparison.total, 2);
+  assert.ok(comparison.wick.winRate !== null);
+  assert.ok(comparison.body.winRate !== null);
+  assert.ok(comparison.diff.expectancy !== undefined);
+  assert.ok(["body", "wick", "tie"].includes(comparison.diff.winner));
+});
+
 test("performance: 5,000 trades compute under 2000ms", () => {
   const trades = A.generateDemoTrades(5000, { seed: 99 });
   const started = Date.now();
