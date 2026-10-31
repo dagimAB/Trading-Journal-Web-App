@@ -2618,6 +2618,11 @@ td .inline-error {
   color: var(--faint);
 }
 
+.tag-editor-wide .tag-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
 .inline-editor {
   width: 100%;
   min-width: 70px;

@@ -2456,11 +2456,10 @@
       </div>
       <div class="form-section">
         <h3>Custom values</h3>
-        <p class="hint" style="margin-bottom:10px">Add your own custom values. Built-in items always appear in dropdowns and are not shown here. Press Enter or comma to add, × to remove.</p>
         <div class="form-grid">
           <div class="field"><label>Instruments</label><div class="tag-editor" data-tag-editor="customInstruments"></div></div>
-          <div class="field"><label>Setups</label><div class="tag-editor" data-tag-editor="customSetups"></div></div>
           <div class="field"><label>Sessions</label><div class="tag-editor" data-tag-editor="customSessions"></div></div>
+          <div class="field span-4"><label>Setups</label><div class="tag-editor tag-editor-wide" data-tag-editor="customSetups"></div></div>
         </div>
       </div>
       <div class="form-section">
