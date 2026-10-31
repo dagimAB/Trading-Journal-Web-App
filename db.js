@@ -364,6 +364,14 @@
     await transactionDone(tx);
   }
 
+  async function clearTradeData() {
+    const db = await open();
+    const tx = db.transaction([STORES.trades, STORES.screenshots], "readwrite");
+    tx.objectStore(STORES.trades).clear();
+    tx.objectStore(STORES.screenshots).clear();
+    await transactionDone(tx);
+  }
+
   async function getStorageEstimate() {
     if (navigator.storage && navigator.storage.estimate) {
       try {
@@ -406,6 +414,7 @@
     mergeAll,
     clearAllData,
     clearTradesOnly,
+    clearTradeData,
     getStorageEstimate,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -2843,8 +2843,8 @@
       </div>
       <div class="data-section danger-zone">
         <h3>Danger zone</h3>
-        <p class="muted">Clear every trade, Exit Plan, screenshot, and setting. This cannot be undone.</p>
-        <button type="button" class="btn btn-danger btn-small" data-data-action="clear-all">Clear all data</button>
+        <p class="muted">Clear every trade and screenshot. Exit Plans and configured settings stay untouched. This cannot be undone.</p>
+        <button type="button" class="btn btn-danger btn-small" data-data-action="clear-all">Clear trade data</button>
       </div>`;
 
     const footer = h("div", { class: "modal-foot" });
@@ -2903,8 +2903,8 @@
         toast("Demo data cleared.", { type: "success" });
       } else if (action === "clear-all") {
         const ok = await confirm({
-          title: "Clear all data?",
-          message: "Every trade, Exit Plan, screenshot, and setting will be deleted. Export a backup first if you need it.",
+          title: "Clear trade data?",
+          message: "Every trade and screenshot will be deleted. Exit Plans and configured settings stay untouched. Export a backup first if you need it.",
           confirmLabel: "Delete everything",
           danger: true,
         });
@@ -2916,7 +2916,7 @@
         }
         entry.close("clear-all");
         await H.clearAll();
-        toast("All data cleared.", { type: "success" });
+        toast("Trade data cleared.", { type: "success" });
       }
     });
   }

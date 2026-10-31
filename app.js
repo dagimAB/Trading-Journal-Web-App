@@ -404,7 +404,7 @@
   }
 
   async function clearAll() {
-    await DB.clearAllData();
+    await DB.clearTradeData();
     filters = Object.assign({}, FILTER_DEFAULTS);
     sort = { key: "tradeNumber", dir: "asc" };
     await load();
