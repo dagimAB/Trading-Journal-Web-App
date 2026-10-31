@@ -2389,8 +2389,12 @@
         <p class="detail-notes">${esc(trade.notes || "No notes.")}</p>
       </div>
       <div class="detail-section">
-        <h3>Screenshots</h3>
-        <div class="details-shots" data-details-shots><p class="muted">Loading…</p></div>
+        <h3>Entry Screenshots <span class="hint" data-entry-shot-count></span></h3>
+        <div class="details-shots" data-entry-shots><p class="muted">Loading…</p></div>
+      </div>
+      <div class="detail-section">
+        <h3>Outcome Screenshots <span class="hint" data-outcome-shot-count></span></h3>
+        <div class="details-shots" data-outcome-shots><p class="muted">Loading…</p></div>
       </div>
       <div class="detail-section">
         <h3>Additional Screenshots <span class="hint" data-extra-shot-count></span></h3>
@@ -2428,14 +2432,12 @@
       });
     });
 
-    const shotsEl = body.querySelector("[data-details-shots]");
+    const entryShotsEl = body.querySelector("[data-entry-shots]");
+    const outcomeShotsEl = body.querySelector("[data-outcome-shots]");
     const extraShotsEl = body.querySelector("[data-extra-shots]");
-    const countEl = body.querySelector("[data-extra-shot-count]");
-    const pinned = [];
-    [["entry", "Entry screenshot"], ["outcome", "Outcome screenshot"]].forEach(([kind, label]) => {
-      const urls = A.screenshotUrls(trade, kind);
-      urls.forEach((src, index) => pinned.push({ src, name: urls.length > 1 ? label + " " + (index + 1) : label }));
-    });
+    const entryCountEl = body.querySelector("[data-entry-shot-count]");
+    const outcomeCountEl = body.querySelector("[data-outcome-shot-count]");
+    const extraCountEl = body.querySelector("[data-extra-shot-count]");
 
     const addFigure = (target, src, name, shot) => {
       const fig = h("figure", { class: "detail-shot" });
@@ -2464,18 +2466,27 @@
       target.appendChild(fig);
     };
 
-    shotsEl.innerHTML = "";
-    if (pinned.length) pinned.forEach((shot) => addFigure(shotsEl, shot.src, shot.name, null));
-    else shotsEl.innerHTML = '<p class="muted">No entry or outcome screenshots.</p>';
+    const renderDedicated = (target, countEl, urls, label, emptyMessage) => {
+      target.innerHTML = "";
+      if (countEl) countEl.textContent = urls.length ? "· " + urls.length : "";
+      if (!urls.length) {
+        target.innerHTML = '<p class="muted">' + emptyMessage + '</p>';
+        return;
+      }
+      urls.forEach((src, index) => addFigure(target, src, urls.length > 1 ? label + " " + (index + 1) : label, null));
+    };
+
+    renderDedicated(entryShotsEl, entryCountEl, A.screenshotUrls(trade, "entry"), "Entry screenshot", "No entry screenshots attached.");
+    renderDedicated(outcomeShotsEl, outcomeCountEl, A.screenshotUrls(trade, "outcome"), "Outcome screenshot", "No outcome screenshots attached.");
 
     Promise.resolve(H.listScreenshots ? H.listScreenshots(trade.id) : []).then((shots) => {
       const list = shots || [];
-      if (countEl) countEl.textContent = list.length ? "· " + list.length : "";
+      if (extraCountEl) extraCountEl.textContent = list.length ? "· " + list.length : "";
       extraShotsEl.innerHTML = "";
       if (list.length) list.forEach((shot) => addFigure(extraShotsEl, shot.displayUrl || shot.url || shot.dataUrl || "", shot.name || "Screenshot", shot));
       else extraShotsEl.innerHTML = '<p class="muted">No additional screenshots.</p>';
     }).catch(() => {
-      if (countEl) countEl.textContent = "";
+      if (extraCountEl) extraCountEl.textContent = "";
       if (extraShotsEl) extraShotsEl.innerHTML = '<p class="muted">Could not load additional screenshots.</p>';
     });
   }
