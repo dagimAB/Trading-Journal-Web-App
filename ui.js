@@ -628,6 +628,17 @@
     document.body.classList.toggle("blind-hide", !!(model.blind && model.settings.blindHideResults));
   }
 
+  function setPanelVisibility() {
+    const hidden = !!(model && model.settings && model.settings.hidePanels);
+    document.body.classList.toggle("panels-hidden", hidden);
+    const btn = byId("btn-hide-panels");
+    if (btn) {
+      btn.textContent = hidden ? "Show Panels" : "Hide Panels";
+      btn.setAttribute("aria-pressed", hidden ? "true" : "false");
+      btn.classList.toggle("is-active", hidden);
+    }
+  }
+
   function renderFooter() {
     const completed = model.allTrades.filter((t) => A.finalR(t) !== null).length;
     const demo = model.allTrades.filter((t) => t.isDemo).length;
@@ -681,6 +692,7 @@
 
   function render() {
     setTheme();
+    setPanelVisibility();
     renderFilters();
     renderDashboard();
     renderCharts();
@@ -1864,7 +1876,7 @@
         <details class="collapsed-fields" data-optional-context style="margin-top:10px">
           <summary>More context (optional)</summary>
           <div class="form-grid" style="margin-top:8px">
-            <div class="field"><label>Time</label><input type="time" name="time" value="${esc(draft.time || "")}"></div>
+            <div class="field"><label>Time (24h)</label><input type="time" name="time" lang="en-GB" step="60" value="${esc(draft.time || "")}" placeholder="HH:MM"></div>
             <div class="field"><label>Killzone</label><select name="killzone">${optionsHTML(A.DEFAULTS.killzones, draft.killzone, "—")}</select></div>
             <div class="field"><label>Setup quality</label><select name="setupQuality">${optionsHTML(A.DEFAULTS.qualities, draft.setupQuality, "—")}</select></div>
             <div class="field"><label>HTF bias</label><select name="htfBias">${optionsHTML(A.DEFAULTS.htfBiases, draft.htfBias, "—")}</select></div>
@@ -3363,6 +3375,10 @@
       const nextTheme = model.settings.theme === "light" ? "dark" : "light";
       H.saveSettings(Object.assign({}, model.settings, { theme: nextTheme }));
     });
+    byId("btn-hide-panels").addEventListener("click", () => {
+      const nextHidden = !(model.settings && model.settings.hidePanels);
+      H.saveSettings(Object.assign({}, model.settings, { hidePanels: nextHidden }));
+    });
     byId("btn-footer-export").addEventListener("click", async () => {
       try { await H.exportJSON(); toast("Backup exported.", { type: "success" }); } catch (err) { toast(err.message || "Export failed.", { type: "error" }); }
     });
@@ -3658,6 +3674,7 @@
     }
     if (!model.analyticsTab) model.analyticsTab = (model.settings && model.settings.visibleAnalytics) || "session";
     if (model.blind === undefined) model.blind = !!(model.settings && model.settings.blindMode);
+    setPanelVisibility();
     render();
   }
 

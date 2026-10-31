@@ -3264,6 +3264,13 @@ body.blind-hide #analytics {
   display: none !important;
 }
 
+/* Header panel visibility toggle */
+body.panels-hidden #dashboard,
+body.panels-hidden #curve-panel,
+body.panels-hidden #analytics {
+  display: none !important;
+}
+
 @media (max-width: 860px) {
   .form-grid.form-grid-3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));

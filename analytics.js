@@ -998,6 +998,7 @@
       lastEntry: { date: "", instrument: "S&P500", session: "London", direction: "Long" },
       blindMode: false,
       blindHideResults: true,
+      hidePanels: false,
       orderBy: "tradeNumber",
       onlyCompletePath: false,
       onlyCommonPlans: true,
