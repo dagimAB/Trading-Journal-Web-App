@@ -412,6 +412,13 @@ test("demo generator respects count, numbering and isDemo flag", () => {
   assert.ok(completed.length > 100);
 });
 
+test("entry timeframes include 2M and 3M without changing HTF timeframes", () => {
+  assert.ok(A.DEFAULTS.entryTimeframes.includes("2M"));
+  assert.ok(A.DEFAULTS.entryTimeframes.includes("3M"));
+  assert.ok(!A.DEFAULTS.timeframes.includes("2M"));
+  assert.ok(!A.DEFAULTS.timeframes.includes("3M"));
+});
+
 test("session suggestion uses historical clock time", () => {
   assert.strictEqual(A.sessionFromTime("19:15"), "Asia");
   assert.strictEqual(A.sessionFromTime("03:00"), "London");

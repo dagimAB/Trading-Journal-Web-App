@@ -51,7 +51,7 @@ Entry, SL, direction, risk distance, and target R values derive target prices. T
 - Equity curve and drawdown chart.
 - Analytics tabs: session, instrument, direction, setup, quality, MFE/MAE distributions, target-hit rates, and Exit Plan comparison.
 - Screenshots stored separately from trades, downscaled/compressed, with upload, drag and drop, paste, preview, and removal.
-- Notes, setup quality, HTF context, killzones, datasets, and custom instrument/setup/session lists.
+- Notes, setup quality, HTF context, killzones, batches, and custom instrument/setup/session lists.
 - Dark and light themes, responsive layout, keyboard shortcuts.
 - Demo data (100 trades) that can be loaded and cleared independently.
 - Delete confirmation with a 15-second Undo.

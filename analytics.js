@@ -55,6 +55,7 @@
     ],
     htfBiases: ["Bullish", "Bearish", "Neutral"],
     timeframes: ["Monthly", "Weekly", "Daily", "4H", "1H", "15M", "5M", "1M"],
+    entryTimeframes: ["Monthly", "Weekly", "Daily", "4H", "1H", "15M", "5M", "3M", "2M", "1M"],
     thresholds: [1, 2, 3, 4, 6, 9],
     mfeBoundaries: [1, 3, 6, 9],
     maeBoundaries: [0.25, 0.5, 0.75, 1],
@@ -88,7 +89,7 @@
     { key: "pathComplete", label: "Path ✓", default: false, width: 84 },
     { key: "waypoints", label: "Waypoints", default: false, width: 132 },
     { key: "screenshot", label: "Shots", default: false, width: 78 },
-    { key: "dataset", label: "Dataset", default: false, width: 140 },
+    { key: "dataset", label: "Batch", default: false, width: 140 },
     { key: "notes", label: "Notes", default: true, width: 220 },
   ];
 
@@ -1247,7 +1248,7 @@
         direction,
         htfBias: pick(DEFAULTS.htfBiases),
         htfTimeframe: pick(DEFAULTS.timeframes),
-        entryTimeframe: pick(DEFAULTS.timeframes.slice(4)),
+        entryTimeframe: pick(DEFAULTS.entryTimeframes.slice(4)),
         setup: pick(setups),
         setupQuality: pick(qualities),
         entry,

@@ -400,13 +400,15 @@
     const css = getComputedStyle(document.documentElement);
     const pick = (name, fallback) => (css.getPropertyValue(name) || fallback).trim();
     return {
-      grid: pick("--border-soft", "#1d232b"),
-      tick: pick("--muted", "#7f8896"),
-      text: pick("--text", "#e7ebf0"),
-      accent: pick("--accent", "#57c7a0"),
-      neg: pick("--neg", "#e5686d"),
-      panel: pick("--panel", "#12161b"),
-      border: pick("--border", "#252b34"),
+      grid: pick("--border-soft", "#24324a"),
+      tick: pick("--muted", "#94a3b8"),
+      text: pick("--text", "#f8fafc"),
+      accent: pick("--accent", "#60a5fa"),
+      accentRgb: pick("--accent-rgb", "96, 165, 250").replace(/\s+/g, ""),
+      neg: pick("--neg", "#f87171"),
+      negRgb: pick("--neg-rgb", "248, 113, 113").replace(/\s+/g, ""),
+      panel: pick("--panel", "#111827"),
+      border: pick("--border", "#334155"),
     };
   }
 
@@ -415,7 +417,7 @@
     const ctx = canvas.getContext("2d");
     const colors = chartColors();
     const gradient = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight || 220);
-    gradient.addColorStop(0, negative ? "rgba(229,104,109,0.20)" : "rgba(87,199,160,0.18)");
+    gradient.addColorStop(0, negative ? `rgba(${colors.negRgb}, 0.20)` : `rgba(${colors.accentRgb}, 0.18)`);
     gradient.addColorStop(1, "rgba(0,0,0,0)");
     const stroke = negative ? colors.neg : colors.accent;
     return new window.Chart(ctx, {
@@ -423,7 +425,7 @@
       data: { datasets: [{
         data: [],
         borderColor: stroke,
-        backgroundColor: negative ? "rgba(229,104,109,0.10)" : gradient,
+        backgroundColor: negative ? `rgba(${colors.negRgb}, 0.10)` : gradient,
         borderWidth: 1.8,
         pointRadius: 0,
         pointHoverRadius: 3,
@@ -548,7 +550,7 @@
     setSelectOptions(byId("filter-instrument"), A.instrumentList(model.settings), "All instruments", filters.instrument || "");
     setSelectOptions(byId("filter-session"), A.sessionList(model.settings), "All sessions", filters.session || "");
     setSelectOptions(byId("filter-setup"), A.setupList(model.settings), "Any setup", filters.setup || "");
-    setSelectOptions(byId("filter-dataset"), uniqueFromTrades("dataset"), "All datasets", filters.dataset || "");
+    setSelectOptions(byId("filter-dataset"), uniqueFromTrades("dataset"), "All batches", filters.dataset || "");
     setSelectOptions(byId("filter-exit-plan"), exitPlanOptions(), "Any Exit Plan", filters.exitPlanKey || "");
 
     byId("filter-result").value = filters.result || "";
@@ -619,6 +621,8 @@
   function setTheme() {
     const theme = model.settings.theme === "light" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", theme);
+    const themeColor = document.querySelector('meta[name="theme-color"]');
+    if (themeColor) themeColor.setAttribute("content", theme === "light" ? "#f1f5f9" : "#0b1120");
     byId("theme-icon").textContent = theme === "light" ? "☾" : "☀";
     byId("btn-blind").classList.toggle("is-active", !!model.blind);
     document.body.classList.toggle("blind-hide", !!(model.blind && model.settings.blindHideResults));
@@ -710,7 +714,7 @@
         <th>${esc(firstLabel)}</th><th class="num">Trades</th><th class="num">Win %</th><th class="num">Avg R</th><th class="num">Total R</th>
         <th class="num">PF</th><th class="num">Avg MFE</th><th class="num">Avg MAE</th><th class="num">Best</th><th class="num">Worst</th>
       </tr></thead>
-      <tbody>${rows || `<tr><td colspan="10" class="muted">No completed trades in this dataset.</td></tr>`}</tbody>
+      <tbody>${rows || `<tr><td colspan="10" class="muted">No completed trades in this batch.</td></tr>`}</tbody>
     </table></div>`;
   }
 
@@ -1865,7 +1869,7 @@
             <div class="field"><label>Setup quality</label><select name="setupQuality">${optionsHTML(A.DEFAULTS.qualities, draft.setupQuality, "—")}</select></div>
             <div class="field"><label>HTF bias</label><select name="htfBias">${optionsHTML(A.DEFAULTS.htfBiases, draft.htfBias, "—")}</select></div>
             <div class="field"><label>HTF timeframe</label><select name="htfTimeframe">${optionsHTML(A.DEFAULTS.timeframes, draft.htfTimeframe, "—")}</select></div>
-            <div class="field"><label>Entry timeframe</label><select name="entryTimeframe">${optionsHTML(A.DEFAULTS.timeframes, draft.entryTimeframe, "—")}</select></div>
+            <div class="field"><label>Entry timeframe</label><select name="entryTimeframe">${optionsHTML(A.DEFAULTS.entryTimeframes, draft.entryTimeframe, "—")}</select></div>
           </div>
         </details>
       </div>
@@ -1902,10 +1906,10 @@
       </div>
       <div class="form-section">
         <details class="collapsed-fields" data-notes-section>
-          <summary>Notes, dataset &amp; additional screenshots (optional)</summary>
+          <summary>Notes, batch &amp; additional screenshots (optional)</summary>
           <div class="field" style="margin-top:8px"><textarea name="notes" rows="3" placeholder="What was the story? What would you repeat or avoid?">${esc(draft.notes || "")}</textarea></div>
           <div class="form-grid" style="margin-top:10px">
-            <div class="field"><label>Dataset / batch</label><input type="text" name="dataset" value="${esc(draft.dataset || "")}" placeholder="e.g. Backtest Batch 1"></div>
+            <div class="field"><label>Batch</label><input type="text" name="dataset" value="${esc(draft.dataset || "")}" placeholder="e.g. Backtest Batch 1"></div>
             <div class="field"><label>Additional Screenshots</label><div data-shots></div><span class="hint">Extra context images; multiple uploads supported.</span></div>
           </div>
         </details>
@@ -2380,7 +2384,7 @@
           <div><span>HTF bias</span><b>${esc(trade.htfBias || "—")}</b></div>
           <div><span>HTF TF</span><b>${esc(trade.htfTimeframe || "—")}</b></div>
           <div><span>Entry TF</span><b>${esc(trade.entryTimeframe || "—")}</b></div>
-          <div><span>Dataset</span><b>${esc(trade.dataset || "—")}</b></div>
+          <div><span>Batch</span><b>${esc(trade.dataset || "—")}</b></div>
           <div><span>Waypoints</span><b>${esc(trade.tradePath && trade.tradePath.waypoints ? trade.tradePath.waypoints.join(", ") : "—")}</b></div>
         </div>
       </div>
@@ -3098,7 +3102,7 @@
     setupQuality: () => A.DEFAULTS.qualities,
     htfBias: () => A.DEFAULTS.htfBiases,
     htfTimeframe: () => A.DEFAULTS.timeframes,
-    entryTimeframe: () => A.DEFAULTS.timeframes,
+    entryTimeframe: () => A.DEFAULTS.entryTimeframes,
     exitReason: () => A.DEFAULTS.exitReasons,
     pathComplete: () => [{ value: "true", label: "Yes" }, { value: "false", label: "No" }],
   };
