@@ -796,16 +796,6 @@
       if (detailsId) renderDetails();
     }
   }
-      renderDashboard();
-      renderCharts();
-      renderTable();
-      renderAnalytics();
-      renderBackup();
-      renderBlindBanner();
-      renderFooter();
-      if (detailsId) renderDetails();
-    }
-  }
 
   function groupTableHTML(groups, firstLabel) {
     const threshold = model.settings.lowSampleThreshold || 30;
@@ -1927,56 +1917,115 @@
     if (firstBad) firstBad.scrollIntoView({ block: "center", behavior: "smooth" });
   }
 
-  async function imageFileToBase64(file) {
-    const dataUrl = await new Promise((resolve, reject) => {
+  function compressImageToDataUrl(fileOrBlob) {
+    return new Promise((resolve, reject) => {
+      if (!fileOrBlob) return reject(new Error("No image file provided."));
+      if (!(fileOrBlob instanceof Blob)) {
+        return reject(new Error("Expected image File or Blob."));
+      }
+
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error("Could not read " + file.name));
-      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        if (!dataUrl || typeof dataUrl !== "string") {
+          return reject(new Error("Failed to read image data."));
+        }
+
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const max = 1600;
+            let width = img.naturalWidth || img.width || 800;
+            let height = img.naturalHeight || img.height || 600;
+
+            if (width > max || height > max) {
+              const scale = Math.min(max / width, max / height);
+              width = Math.max(1, Math.round(width * scale));
+              height = Math.max(1, Math.round(height * scale));
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              return resolve(dataUrl);
+            }
+
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.75);
+            resolve(jpegDataUrl);
+          } catch (err) {
+            console.warn("Canvas compression failed, falling back to dataUrl:", err);
+            resolve(dataUrl);
+          }
+        };
+        img.onerror = () => {
+          reject(new Error("Unable to decode image file."));
+        };
+        img.src = dataUrl;
+      };
+      reader.onerror = () => {
+        reject(new Error("Failed to read image file."));
+      };
+      reader.readAsDataURL(fileOrBlob);
     });
-    const image = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("Unsupported image: " + file.name));
-      img.src = dataUrl;
-    });
-    const max = 1600;
-    let width = image.naturalWidth;
-    let height = image.naturalHeight;
-    let output = dataUrl;
-    if (width > max || height > max) {
-      const scale = Math.min(max / width, max / height);
-      width = Math.round(width * scale);
-      height = Math.round(height * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(image, 0, 0, width, height);
-      output = canvas.toDataURL("image/jpeg", 0.82);
+  }
+
+  async function uploadToImgBBWithTimeout(base64, name, apiKey, timeoutMs = 10000) {
+    if (!apiKey) throw new Error("ImgBB API key not set.");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const form = new FormData();
+      form.append("image", base64);
+      if (name) form.append("name", String(name).replace(/\.[^.]+$/, ""));
+      const response = await fetch("https://api.imgbb.com/1/upload?key=" + encodeURIComponent(apiKey), {
+        method: "POST",
+        body: form,
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const j = await response.json();
+          detail = j && j.error && j.error.message ? " — " + j.error.message : "";
+        } catch (_) {}
+        throw new Error("ImgBB upload failed (" + response.status + ")" + detail + ".");
+      }
+      const json = await response.json();
+      if (!json || !json.success || !json.data || !json.data.url) {
+        throw new Error("ImgBB: " + (json && json.error && json.error.message ? json.error.message : "Upload rejected."));
+      }
+      return {
+        url: json.data.url,
+        displayUrl: json.data.display_url,
+        deleteUrl: json.data.delete_url,
+      };
+    } finally {
+      clearTimeout(timeoutId);
     }
-    // Return just the base64 part (strip the data:...;base64, prefix)
-    return { base64: output.split(",")[1], name: file.name, width, height };
+  }
+
+  async function imageFileToBase64(file) {
+    const output = await compressImageToDataUrl(file);
+    const comma = output.indexOf(",");
+    const base64 = comma === -1 ? output : output.slice(comma + 1);
+    return {
+      base64,
+      name: file && file.name ? file.name : "screenshot.jpg",
+      width: 1200,
+      height: 800,
+    };
   }
 
   async function uploadToImgBB(base64, name) {
     const apiKey = model && model.settings && model.settings.imgbbApiKey;
     if (!apiKey) throw new Error("ImgBB API key not set. Go to Settings → ImgBB API key.");
-    const form = new FormData();
-    form.append("image", base64);
-    if (name) form.append("name", name.replace(/\.[^.]+$/, "")); // strip extension
-    const response = await fetch("https://api.imgbb.com/1/upload?key=" + encodeURIComponent(apiKey), { method: "POST", body: form });
-    if (!response.ok) {
-      let detail = "";
-      try { const j = await response.json(); detail = j && j.error && j.error.message ? " — " + j.error.message : ""; } catch (_) {}
-      throw new Error("ImgBB upload failed (" + response.status + ")" + detail + ".");
-    }
-    const json = await response.json();
-    if (!json.success) throw new Error("ImgBB: " + (json.error && json.error.message ? json.error.message : "Upload rejected."));
-    return {
-      url: json.data.url,
-      displayUrl: json.data.display_url,
-      deleteUrl: json.data.delete_url,
-    };
+    return uploadToImgBBWithTimeout(base64, name, apiKey, 10000);
   }
 
   async function imageFileToScreenshot(file) {
@@ -3825,20 +3874,40 @@
   const cardActiveTf = new Map();
 
   async function processChartImage(input) {
+    if (!input) return null;
+
     if (typeof input === "string") {
-      return input.trim();
+      const str = input.trim();
+      if (!str) return null;
+      // Convert TradingView snapshot webpage links to direct image URLs
+      const tvMatch = str.match(/(?:https?:\/\/)?(?:www\.)?tradingview\.com\/x\/([a-zA-Z0-9]+)/i);
+      if (tvMatch) {
+        const id = tvMatch[1];
+        const c = id.charAt(0).toLowerCase();
+        return `https://s3.tradingview.com/snapshots/${c}/${id}.png`;
+      }
+      return str;
     }
-    const { base64, name } = await imageFileToBase64(input);
+
+    // Input is a File or Blob -> Compress client-side to JPEG (max 1600px, quality 0.75)
+    const compressedDataUrl = await compressImageToDataUrl(input);
+
     const apiKey = model && model.settings && model.settings.imgbbApiKey;
     if (apiKey) {
       try {
-        const uploaded = await uploadToImgBB(base64, name);
-        return uploaded.url;
+        const comma = compressedDataUrl.indexOf(",");
+        const base64 = comma === -1 ? compressedDataUrl : compressedDataUrl.slice(comma + 1);
+        const name = (input && input.name) ? input.name : "missed_chart.jpg";
+        const uploaded = await uploadToImgBBWithTimeout(base64, name, apiKey, 10000);
+        if (uploaded && uploaded.url) {
+          return uploaded.url;
+        }
       } catch (err) {
-        console.warn("ImgBB upload failed; saving compressed local image instead.", err);
+        console.warn("ImgBB upload failed or timed out; saving compressed image locally.", err);
       }
     }
-    return "data:image/jpeg;base64," + base64;
+
+    return compressedDataUrl;
   }
 
   function renderMissedTrades() {
@@ -4000,6 +4069,7 @@
     let ltfUrl = draft.ltfScreenshot || null;
     let isUploadingHtf = false;
     let isUploadingLtf = false;
+    let activeSlot = !htfUrl ? "htf" : (!ltfUrl ? "ltf" : "htf");
 
     const body = h("div", { class: "trade-form" });
 
@@ -4023,20 +4093,24 @@
           <div class="missed-dropzone-prompt">
             <span class="missed-dropzone-spinner"></span>
             <b>Processing chart...</b>
+            <div class="hint" style="margin-top:4px;">Optimizing image...</div>
           </div>
+          <input type="file" accept="image/*" data-file-slot="${slot}" hidden />
         `;
       }
       if (url) {
         return `
           <img src="${esc(url)}" class="missed-dropzone-preview" alt="${slot} chart preview" />
+          <div class="missed-dropzone-slot-label" style="position:absolute; top:8px; left:8px; z-index:5; background:rgba(15,23,42,0.85); padding:2px 8px; border-radius:4px; font-size:10px; color:#fff;">${slot.toUpperCase()}</div>
           <button type="button" class="missed-dropzone-remove" data-remove-slot="${slot}" title="Remove screenshot">×</button>
+          <input type="file" accept="image/*" data-file-slot="${slot}" hidden />
         `;
       }
       return `
         <div class="missed-dropzone-slot-label">${slot.toUpperCase()} Screenshot</div>
         <div class="missed-dropzone-prompt">
           <b>Drag & drop</b>, click to browse, or paste <b>Ctrl+V</b>
-          <div class="hint" style="margin-top:4px;">Accepts chart image files or links</div>
+          <div class="hint" style="margin-top:4px;">Accepts chart image files, TradingView links, or URLs</div>
         </div>
         <input type="file" accept="image/*" data-file-slot="${slot}" hidden />
       `;
@@ -4160,24 +4234,36 @@
     });
 
     // Dropzone management
+    function updateDropzoneHighlight() {
+      const htfZone = body.querySelector('[data-dropzone="htf"]');
+      const ltfZone = body.querySelector('[data-dropzone="ltf"]');
+      if (htfZone) htfZone.classList.toggle("selected-slot", activeSlot === "htf");
+      if (ltfZone) ltfZone.classList.toggle("selected-slot", activeSlot === "ltf");
+    }
+
     function updateDropzonesUI() {
       const htfZone = body.querySelector('[data-dropzone="htf"]');
       const ltfZone = body.querySelector('[data-dropzone="ltf"]');
       if (htfZone) htfZone.innerHTML = renderDropzone("htf", htfUrl, isUploadingHtf);
       if (ltfZone) ltfZone.innerHTML = renderDropzone("ltf", ltfUrl, isUploadingLtf);
+      updateDropzoneHighlight();
       attachDropzoneEvents();
     }
 
     async function handleFileSlot(slot, fileOrUrl) {
+      if (!fileOrUrl) return;
       if (slot === "htf") isUploadingHtf = true;
       else isUploadingLtf = true;
       updateDropzonesUI();
 
       try {
         const url = await processChartImage(fileOrUrl);
-        if (slot === "htf") htfUrl = url;
-        else ltfUrl = url;
+        if (url) {
+          if (slot === "htf") htfUrl = url;
+          else ltfUrl = url;
+        }
       } catch (err) {
+        console.error("Chart processing error:", err);
         toast(err.message || "Could not process image.", { type: "error" });
       } finally {
         if (slot === "htf") isUploadingHtf = false;
@@ -4191,7 +4277,15 @@
         const zone = body.querySelector(`[data-dropzone="${slot}"]`);
         if (!zone) return;
 
+        zone.onfocus = () => {
+          activeSlot = slot;
+          updateDropzoneHighlight();
+        };
+
         zone.onclick = (e) => {
+          activeSlot = slot;
+          updateDropzoneHighlight();
+
           if (e.target.closest("[data-remove-slot]")) {
             e.stopPropagation();
             if (slot === "htf") htfUrl = null;
@@ -4213,18 +4307,22 @@
 
         zone.ondragover = (e) => {
           e.preventDefault();
+          activeSlot = slot;
+          updateDropzoneHighlight();
           zone.classList.add("drag-over");
         };
         zone.ondragleave = () => zone.classList.remove("drag-over");
         zone.ondrop = (e) => {
           e.preventDefault();
           zone.classList.remove("drag-over");
+          activeSlot = slot;
+          updateDropzoneHighlight();
           const file = e.dataTransfer.files && e.dataTransfer.files[0];
           if (file) {
             handleFileSlot(slot, file);
           } else {
             const text = e.dataTransfer.getData("text");
-            if (text && /^https?:\/\//i.test(text.trim())) {
+            if (text && text.trim()) {
               handleFileSlot(slot, text.trim());
             }
           }
@@ -4233,46 +4331,72 @@
     }
 
     attachDropzoneEvents();
+    updateDropzoneHighlight();
 
     // Global paste within modal
     body.addEventListener("paste", async (e) => {
       const active = document.activeElement;
-      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA") && active.id !== "modal-custom-reason") {
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
         const items = e.clipboardData && e.clipboardData.items;
-        let imgItem = null;
+        let hasImage = false;
         if (items) {
           for (let i = 0; i < items.length; i++) {
             if (items[i].type && items[i].type.startsWith("image/")) {
-              imgItem = items[i].getAsFile();
+              hasImage = true;
               break;
             }
           }
         }
-        if (!imgItem) return;
+        if (!hasImage && (active.id === "modal-custom-reason" || active.name === "notes" || active.name === "potentialR" || active.name === "date")) {
+          return;
+        }
       }
 
       const clipboardData = e.clipboardData || window.clipboardData;
       if (!clipboardData) return;
 
       let file = null;
-      const items = clipboardData.items;
-      if (items) {
-        for (let i = 0; i < items.length; i++) {
-          if (items[i].type && items[i].type.startsWith("image/")) {
-            file = items[i].getAsFile();
+      if (clipboardData.files && clipboardData.files.length > 0) {
+        for (let i = 0; i < clipboardData.files.length; i++) {
+          if (clipboardData.files[i].type && clipboardData.files[i].type.startsWith("image/")) {
+            file = clipboardData.files[i];
+            break;
+          }
+        }
+      }
+      if (!file && clipboardData.items) {
+        for (let i = 0; i < clipboardData.items.length; i++) {
+          const item = clipboardData.items[i];
+          if (item.type && item.type.startsWith("image/")) {
+            file = item.getAsFile();
             break;
           }
         }
       }
 
-      const text = clipboardData.getData("text");
-      const isUrl = text && (/^https?:\/\/.+\.(png|jpe?g|webp|gif)/i.test(text.trim()) || text.includes("tradingview.com/x/"));
+      const text = (clipboardData.getData("text") || "").trim();
+      const isUrl = text && (
+        /^https?:\/\/.+/i.test(text) ||
+        text.includes("tradingview.com/x/") ||
+        text.startsWith("data:image/")
+      );
 
       if (file || isUrl) {
         e.preventDefault();
-        const targetSlot = !htfUrl ? "htf" : (!ltfUrl ? "ltf" : "htf");
-        await handleFileSlot(targetSlot, file || text.trim());
-        toast(`Chart pasted to ${targetSlot.toUpperCase()}`, { type: "success" });
+        e.stopPropagation();
+
+        let targetSlot = activeSlot;
+        const dropzoneEl = e.target && e.target.closest && e.target.closest("[data-dropzone]");
+        if (dropzoneEl && dropzoneEl.dataset.dropzone) {
+          targetSlot = dropzoneEl.dataset.dropzone;
+        } else if (!targetSlot) {
+          targetSlot = !htfUrl ? "htf" : (!ltfUrl ? "ltf" : "htf");
+        }
+
+        activeSlot = targetSlot;
+        updateDropzoneHighlight();
+        await handleFileSlot(targetSlot, file || text);
+        toast(`Chart attached to ${targetSlot.toUpperCase()}`, { type: "success" });
       }
     });
 
@@ -4291,6 +4415,10 @@
     });
 
     saveBtn.addEventListener("click", async () => {
+      if (isUploadingHtf || isUploadingLtf) {
+        toast("Please wait for chart processing to finish before saving.", { type: "warn" });
+        return;
+      }
       const formEl = body;
       const date = formEl.querySelector('[name="date"]').value;
       const instrument = formEl.querySelector('[name="instrument"]').value;

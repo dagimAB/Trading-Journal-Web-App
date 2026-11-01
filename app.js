@@ -715,6 +715,9 @@
     try {
       await load();
       initialized = true;
+      if (!window.ICT || !window.ICT.ui || typeof window.ICT.ui.init !== "function") {
+        throw new Error("UI module failed to initialize. Please check for script errors in ui.js.");
+      }
       window.ICT.ui.init(state, handlers);
     } catch (error) {
       showFatal(error);
