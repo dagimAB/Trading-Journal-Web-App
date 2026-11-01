@@ -79,6 +79,7 @@
     { key: "stopLoss", label: "SL", default: true, width: 102, sortable: true, numeric: true },
     { key: "wickSl", label: "Wick SL", default: true, width: 130, sortable: true },
     { key: "bodySl", label: "Body SL", default: true, width: 130, sortable: true },
+    { key: "spcSl", label: "SPC SL", default: true, width: 130, sortable: true },
     { key: "riskR", label: "Risk", default: true, width: 74, numeric: true },
     { key: "exitPlan", label: "Exit Plan", default: true, width: 176 },
     { key: "planTemplate", label: "Plan Name", default: false, width: 132 },
@@ -441,10 +442,12 @@
     const result = finalR(trade);
     const wickRr = trade && trade.wickRr !== undefined && trade.wickRr !== null && trade.wickRr !== "" ? trade.wickRr : null;
     const bodyRr = trade && trade.bodyRr !== undefined && trade.bodyRr !== null && trade.bodyRr !== "" ? trade.bodyRr : null;
+    const spcSl = trade && trade.spcSl !== undefined && trade.spcSl !== null && trade.spcSl !== "" ? trade.spcSl : (trade && trade.spcRr !== undefined && trade.spcRr !== null && trade.spcRr !== "" ? trade.spcRr : null);
     return {
       ...trade,
       wickRr,
       bodyRr,
+      spcSl,
       day: dayOfWeek(trade && trade.date),
       rDistance: rDistance(trade),
       exitPlanLevels: levels,
@@ -884,9 +887,10 @@
     if (!completed.length) {
       return {
         total: 0,
-        wick: { winRate: null, totalR: 0, expectancy: null, stopOutFreq: null, wins: 0, losses: 0, breakevens: 0, stopOuts: 0 },
-        body: { winRate: null, totalR: 0, expectancy: null, stopOutFreq: null, wins: 0, losses: 0, breakevens: 0, stopOuts: 0 },
-        diff: { expectancy: 0, winRate: 0, totalR: 0, stopOutFreq: 0, winner: "tie", summaryText: "No completed trades to evaluate." },
+        wick: { winRate: null, totalR: 0, expectancy: null, stopOutFreq: null, wins: 0, losses: 0, breakevens: 0, stopOuts: 0, avgWinR: 0 },
+        body: { winRate: null, totalR: 0, expectancy: null, stopOutFreq: null, wins: 0, losses: 0, breakevens: 0, stopOuts: 0, avgWinR: 0 },
+        spc: { winRate: null, totalR: 0, expectancy: null, stopOutFreq: null, wins: 0, losses: 0, breakevens: 0, stopOuts: 0, avgWinR: 0 },
+        diff: { expectancy: 0, winRate: 0, totalR: 0, stopOutFreq: 0, winner: "tie", winnerLabel: "Equal Edge", summaryText: "No completed trades to evaluate." },
         trades: [],
       };
     }
@@ -901,6 +905,7 @@
 
       const wRrVal = parseRrVal(t.wickRr);
       const bRrVal = parseRrVal(t.bodyRr);
+      const sRrVal = parseRrVal(t.spcSl !== undefined && t.spcSl !== null && t.spcSl !== "" ? t.spcSl : t.spcRr);
       let wickSl = toNum(t.wickSlPrice);
       let bodySl = toNum(t.bodySlPrice);
 
@@ -926,18 +931,21 @@
         ratio,
         wRrVal,
         bRrVal,
+        sRrVal,
         wickSl,
         bodySl,
       };
     }).filter(Boolean);
 
-    let wickWins = 0, wickLosses = 0, wickBes = 0, wickStopOuts = 0;
+    let wickWins = 0, wickLosses = 0, wickBes = 0, wickStopOuts = 0, wickWinsR = 0;
     let wickRValues = [];
-    let bodyWins = 0, bodyLosses = 0, bodyBes = 0, bodyStopOuts = 0;
+    let bodyWins = 0, bodyLosses = 0, bodyBes = 0, bodyStopOuts = 0, bodyWinsR = 0;
     let bodyRValues = [];
+    let spcWins = 0, spcLosses = 0, spcBes = 0, spcStopOuts = 0, spcWinsR = 0;
+    let spcRValues = [];
     const comparisonRows = [];
 
-    targetTrades.forEach(({ trade: t, entry, ratio, wRrVal, bRrVal, wickSl, bodySl, slType }) => {
+    targetTrades.forEach(({ trade: t, entry, ratio, wRrVal, bRrVal, sRrVal, wickSl, bodySl, slType }) => {
       const maeR = toNum(t.tradePath && t.tradePath.mae);
       const execFinalR = finalR(t);
 
@@ -945,23 +953,21 @@
       let wStopped = false;
       let bR = 0;
       let bStopped = false;
+      let sR = 0;
+      let sStopped = false;
 
-      if (wRrVal !== null && bRrVal !== null) {
-        if (execFinalR > tol) {
+      // 1. Wick Model
+      if (wRrVal !== null) {
+        if (wRrVal < -tol) {
           wR = wRrVal;
-          bR = bRrVal;
-          if (maeR !== null && maeR >= 1.0 / ratio) {
-            bR = -1.0;
-            bStopped = true;
-          }
+          wStopped = true;
+        } else if (execFinalR > tol) {
+          wR = wRrVal;
         } else if (execFinalR < -tol) {
           wR = -1.0;
           wStopped = true;
-          bR = -1.0;
-          bStopped = true;
         } else {
           wR = 0;
-          bR = 0;
         }
       } else {
         // Fallback for price-derived evaluation
@@ -980,7 +986,26 @@
             wStopped = false;
           }
         }
+      }
 
+      // 2. Body Model
+      if (bRrVal !== null) {
+        if (bRrVal < -tol) {
+          bR = bRrVal;
+          bStopped = true;
+        } else if (execFinalR > tol) {
+          bR = bRrVal;
+          if (maeR !== null && maeR >= 1.0 / ratio) {
+            bR = -1.0;
+            bStopped = true;
+          }
+        } else if (execFinalR < -tol) {
+          bR = -1.0;
+          bStopped = true;
+        } else {
+          bR = 0;
+        }
+      } else {
         if (slType === "body") {
           bR = execFinalR;
           bStopped = t.exitReason === "SL" || (maeR !== null && maeR >= 1.0) || execFinalR <= -0.99;
@@ -999,53 +1024,109 @@
         }
       }
 
+      // 3. SPC Model (Space SL)
+      if (sRrVal !== null) {
+        sR = sRrVal;
+        sStopped = sR < -tol;
+      } else {
+        if (execFinalR < -tol) {
+          sR = -1.0;
+          sStopped = true;
+        } else if (execFinalR > tol) {
+          sR = wR !== 0 ? clampNumber(wR * 0.85, 2) : clampNumber(execFinalR * 0.85, 2);
+          sStopped = false;
+        } else {
+          sR = 0;
+          sStopped = false;
+        }
+      }
+
       wR = clampNumber(wR, 2);
       bR = clampNumber(bR, 2);
+      sR = clampNumber(sR, 2);
 
       wickRValues.push(wR);
       if (wStopped) wickStopOuts++;
-      if (wR > tol) wickWins++;
+      if (wR > tol) { wickWins++; wickWinsR += wR; }
       else if (wR < -tol) wickLosses++;
       else wickBes++;
 
       bodyRValues.push(bR);
       if (bStopped) bodyStopOuts++;
-      if (bR > tol) bodyWins++;
+      if (bR > tol) { bodyWins++; bodyWinsR += bR; }
       else if (bR < -tol) bodyLosses++;
       else bodyBes++;
+
+      spcRValues.push(sR);
+      if (sStopped) spcStopOuts++;
+      if (sR > tol) { spcWins++; spcWinsR += sR; }
+      else if (sR < -tol) spcLosses++;
+      else spcBes++;
 
       comparisonRows.push({
         trade: t,
         wickRr: t.wickRr !== null && t.wickRr !== undefined ? t.wickRr : (wR ? formatRr(wR) : "—"),
         bodyRr: t.bodyRr !== null && t.bodyRr !== undefined ? t.bodyRr : (bR ? formatRr(bR) : "—"),
+        spcSl: t.spcSl !== null && t.spcSl !== undefined ? t.spcSl : (sR ? formatRr(sR) : "—"),
         wickSlPrice: wickSl,
         bodySlPrice: bodySl,
         slType,
         wickR: wR,
         bodyR: bR,
+        spcR: sR,
         diffR: clampNumber(bR - wR, 2),
         wickStopped: wStopped,
         bodyStopped: bStopped,
+        spcStopped: sStopped,
       });
     });
 
     const total = targetTrades.length;
     const wickTotalR = clampNumber(wickRValues.reduce((a, b) => a + b, 0), 2);
     const bodyTotalR = clampNumber(bodyRValues.reduce((a, b) => a + b, 0), 2);
+    const spcTotalR = clampNumber(spcRValues.reduce((a, b) => a + b, 0), 2);
+
     const wickExp = total > 0 ? clampNumber(wickTotalR / total, 3) : 0;
     const bodyExp = total > 0 ? clampNumber(bodyTotalR / total, 3) : 0;
+    const spcExp = total > 0 ? clampNumber(spcTotalR / total, 3) : 0;
+
+    const wickAvgWin = wickWins > 0 ? clampNumber(wickWinsR / wickWins, 2) : 0;
+    const bodyAvgWin = bodyWins > 0 ? clampNumber(bodyWinsR / bodyWins, 2) : 0;
+    const spcAvgWin = spcWins > 0 ? clampNumber(spcWinsR / spcWins, 2) : 0;
+
     const expDiff = clampNumber(bodyExp - wickExp, 3);
     const winRateDiff = total > 0 ? clampNumber(((bodyWins - wickWins) / total) * 100, 1) : 0;
     const stopOutDiff = total > 0 ? clampNumber(((bodyStopOuts - wickStopOuts) / total) * 100, 1) : 0;
 
     let winner = "tie";
-    let summaryText = "Both placement methods produce identical net expectancy on this dataset.";
-    if (expDiff > 0.001) {
-      winner = "body";
-      summaryText = `Tighter Body SL outperforms Wick SL by +${formatR(expDiff)} expectancy per trade. The amplified reward on wins outweighs the extra stop-outs.`;
-    } else if (expDiff < -0.001) {
-      winner = "wick";
-      summaryText = `Safer Wick SL outperforms Body SL by +${formatR(Math.abs(expDiff))} expectancy per trade. Protecting against premature stop-outs generates superior long-term edge.`;
+    let winnerLabel = "Equal Edge";
+    let summaryText = "All three placement methods produce identical net expectancy on this dataset.";
+
+    const maxExp = Math.max(wickExp, bodyExp, spcExp);
+    const minExp = Math.min(wickExp, bodyExp, spcExp);
+
+    if (maxExp - minExp > 0.001) {
+      if (maxExp === spcExp && spcExp > bodyExp && spcExp > wickExp) {
+        winner = "spc";
+        winnerLabel = "SPC SL Advantage";
+        summaryText = `Space SL (SPC SL) outperforms Wick and Body SL with ${formatR(spcExp)} expectancy per trade (${formatR(spcTotalR)} Net R). Providing extra breathing room prevents premature wick stop-outs.`;
+      } else if (maxExp === bodyExp && bodyExp > wickExp && bodyExp > spcExp) {
+        winner = "body";
+        winnerLabel = "Body SL Advantage";
+        summaryText = `Tighter Body SL outperforms Wick and Space SL with ${formatR(bodyExp)} expectancy per trade (${formatR(bodyTotalR)} Net R). The amplified reward on wins outweighs the extra stop-outs.`;
+      } else if (maxExp === wickExp && wickExp > bodyExp && wickExp > spcExp) {
+        winner = "wick";
+        winnerLabel = "Wick SL Advantage";
+        summaryText = `Standard Wick SL outperforms Body and Space SL with ${formatR(wickExp)} expectancy per trade (${formatR(wickTotalR)} Net R). It maintains the optimal balance between protection and reward.`;
+      } else if (bodyExp === wickExp && bodyExp > spcExp) {
+        winner = "body";
+        winnerLabel = "Body & Wick SL Tied";
+        summaryText = `Body SL and Wick SL are tied at ${formatR(bodyExp)} expectancy per trade (${formatR(bodyTotalR)} Net R), outperforming Space SL.`;
+      } else if (spcExp === wickExp && spcExp > bodyExp) {
+        winner = "spc";
+        winnerLabel = "SPC & Wick SL Tied";
+        summaryText = `Space SL and Wick SL are tied at ${formatR(spcExp)} expectancy per trade (${formatR(spcTotalR)} Net R), outperforming Body SL.`;
+      }
     }
 
     return {
@@ -1059,6 +1140,7 @@
         losses: wickLosses,
         breakevens: wickBes,
         stopOuts: wickStopOuts,
+        avgWinR: wickAvgWin,
       },
       body: {
         totalR: bodyTotalR,
@@ -1069,6 +1151,18 @@
         losses: bodyLosses,
         breakevens: bodyBes,
         stopOuts: bodyStopOuts,
+        avgWinR: bodyAvgWin,
+      },
+      spc: {
+        totalR: spcTotalR,
+        expectancy: spcExp,
+        winRate: total > 0 ? clampNumber((spcWins / total) * 100, 1) : null,
+        stopOutFreq: total > 0 ? clampNumber((spcStopOuts / total) * 100, 1) : null,
+        wins: spcWins,
+        losses: spcLosses,
+        breakevens: spcBes,
+        stopOuts: spcStopOuts,
+        avgWinR: spcAvgWin,
       },
       diff: {
         expectancy: expDiff,
@@ -1076,6 +1170,7 @@
         totalR: clampNumber(bodyTotalR - wickTotalR, 2),
         stopOutFreq: stopOutDiff,
         winner,
+        winnerLabel,
         summaryText,
       },
       trades: comparisonRows,
@@ -1180,10 +1275,10 @@
     let summaryText = "Realized exits and full runners produced identical returns.";
     if (varianceR > 0.05) {
       recommendation = "runners";
-      summaryText = `Holding full runners to the final target would have generated +${formatR(varianceR)} more profit (+${formatR(avgVarianceR)} / win). Taking partials is leaving substantial money on the table for your winning setups.`;
+      summaryText = `Holding full runners to the final target would have generated ${formatR(varianceR)} more profit (${formatR(avgVarianceR)} / win). Taking partials is leaving substantial money on the table for your winning setups.`;
     } else if (varianceR < -0.05) {
       recommendation = "partials";
-      summaryText = `Scaling out with partials outperformed full runners by +${formatR(Math.abs(varianceR))} (+${formatR(Math.abs(avgVarianceR))} / win). Securing partial profits protected gains against retracements.`;
+      summaryText = `Scaling out with partials outperformed full runners by ${formatR(Math.abs(varianceR))} (${formatR(Math.abs(avgVarianceR))} / win). Securing partial profits protected gains against retracements.`;
     } else {
       recommendation = "equal";
       summaryText = "Both approaches produced virtually identical returns on this dataset.";
@@ -1463,6 +1558,7 @@
     if (key === "finalR" || key === "status") return finalR(trade);
     if (key === "wickSl" || key === "wickRr") return parseRrVal(trade.wickRr);
     if (key === "bodySl" || key === "bodyRr") return parseRrVal(trade.bodyRr);
+    if (key === "spcSl" || key === "spcRr") return parseRrVal(trade.spcSl !== undefined ? trade.spcSl : trade.spcRr);
     if (key === "direction") return trade.direction || "";
     if (key === "setup") return setupComponents(trade).join(", ");
     if (key === "instrument") return trade.instrument || "";
@@ -1629,8 +1725,10 @@
       const targetP = targetPrice(entry, stopLoss, direction, lastTarget);
       const wickRNum = clampNumber(calcRr(entry, stopLoss, targetP) || 3.0, 1);
       const bodyRNum = clampNumber(wickRNum * 1.25, 1);
+      const spcRNum = clampNumber(wickRNum * 0.85, 1);
       const wickRr = formatRr(wickRNum);
       const bodyRr = formatRr(bodyRNum);
+      const spcSl = formatRr(spcRNum);
       const trade = {
         id: "demo-" + i + "-" + Math.random().toString(36).slice(2, 8),
         tradeNumber: i + 1,
@@ -1649,6 +1747,7 @@
         stopLoss,
         wickRr,
         bodyRr,
+        spcSl,
         riskR: rand() < 0.12 ? 0.5 : 1,
         exitPlan: tpl.levels.map((l) => ({ allocation: l.allocation, targetR: l.targetR })),
         exitPlanTemplateId: tpl.id,

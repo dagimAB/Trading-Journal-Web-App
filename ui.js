@@ -5,7 +5,7 @@
   const RESULT_COLUMN_KEYS = ["mfe", "mae", "remainderExitR", "finalR", "status", "exitReason", "levelsHit", "pathComplete", "waypoints", "screenshot"];
   const INLINE_FIELDS = new Set([
     "date", "time", "session", "killzone", "instrument", "direction", "setup", "setupQuality",
-    "htfBias", "htfTimeframe", "entryTimeframe", "entry", "stopLoss", "wickSl", "bodySl", "wickRr", "bodyRr", "riskR", "mfe", "mae",
+    "htfBias", "htfTimeframe", "entryTimeframe", "entry", "stopLoss", "wickSl", "bodySl", "spcSl", "wickRr", "bodyRr", "spcRr", "riskR", "mfe", "mae",
     "remainderExitR", "finalR", "exitReason", "pathComplete", "waypoints", "dataset", "notes",
   ]);
 
@@ -172,6 +172,12 @@
         if (val === null || val === undefined || val === "") return '<span class="muted">—</span>';
         return esc(String(val));
       }
+      case "spcSl":
+      case "spcRr": {
+        const val = trade.spcSl;
+        if (val === null || val === undefined || val === "") return '<span class="muted">—</span>';
+        return esc(String(val));
+      }
       case "riskR": return A.formatNumber(trade.riskR, 2);
       case "exitPlan":
         return `<span class="plan-cell" data-action="plan" title="Edit Exit Plan">${levelDots(trade)}<span>${esc(trade.exitPlanLabel || "—")}</span></span>`;
@@ -216,8 +222,16 @@
 
   function isColumnVisible(key, settings, blind) {
     if (key === "tradeNumber") return true;
-    if (!settings.columns || !settings.columns[key]) return false;
-    if (blind && settings.blindHideResults && RESULT_COLUMN_KEYS.includes(key)) return false;
+    if (settings && settings.columns) {
+      if (settings.columns[key] === false) return false;
+      if (settings.columns[key] === true) {
+        if (blind && settings.blindHideResults && RESULT_COLUMN_KEYS.includes(key)) return false;
+        return true;
+      }
+    }
+    const colDef = A.COLUMNS.find((c) => c.key === key);
+    if (!colDef || !colDef.default) return false;
+    if (blind && settings && settings.blindHideResults && RESULT_COLUMN_KEYS.includes(key)) return false;
     return true;
   }
 
@@ -250,7 +264,8 @@
         : col.key === "finalR" ? ' title="Calculated from the Exit Plan. Click to set a manual override."'
         : col.key === "status" ? ' title="Trade Status (Win / Loss / Breakeven)"'
         : col.key === "wickSl" || col.key === "wickRr" ? ' title="Wick Stop-Loss R:R"'
-        : col.key === "bodySl" || col.key === "bodyRr" ? ' title="Body Stop-Loss R:R"' : "";
+        : col.key === "bodySl" || col.key === "bodyRr" ? ' title="Body Stop-Loss R:R"'
+        : col.key === "spcSl" || col.key === "spcRr" ? ' title="Space Stop-Loss R:R"' : "";
       const cellContent = col.key === "status" ? statusBadge(trade.finalR) : cellText(trade, col.key);
       return `<td class="num${right}${center}${sticky ? " sticky" : ""}"${style}${field}${title}>${cellContent}</td>`;
     }).join("");
@@ -659,10 +674,12 @@
   }
 
   function setPanelVisibility() {
+    const isMissed = model && model.view === "missed";
     const hidden = !!(model && model.settings && model.settings.hidePanels);
     document.body.classList.toggle("panels-hidden", hidden);
     const btn = byId("btn-hide-panels");
     if (btn) {
+      btn.hidden = isMissed;
       btn.textContent = hidden ? "Show Panels" : "Hide Panels";
       btn.setAttribute("aria-pressed", hidden ? "true" : "false");
       btn.classList.toggle("is-active", hidden);
@@ -713,8 +730,11 @@
   function renderColumnsPopover() {
     byId("columns-list").innerHTML = A.COLUMNS.map((col) => {
       const locked = col.key === "tradeNumber";
+      const isChecked = model.settings.columns && model.settings.columns[col.key] !== undefined
+        ? !!model.settings.columns[col.key]
+        : !!col.default;
       return `<label class="column-check${locked ? " frozen" : ""}" title="${locked ? "Always visible" : ""}">
-        <input type="checkbox" data-column="${col.key}"${model.settings.columns[col.key] ? " checked" : ""}${locked ? " disabled" : ""}>
+        <input type="checkbox" data-column="${col.key}"${isChecked ? " checked" : ""}${locked ? " disabled" : ""}>
         ${esc(col.label)}${col.sticky ? " · frozen" : ""}
       </label>`;
     }).join("");
@@ -730,6 +750,9 @@
     const missedBtn = byId("btn-missed-trades");
     if (missedBtn) missedBtn.classList.toggle("is-active", isMissed);
 
+    const hidePanelsBtn = byId("btn-hide-panels");
+    if (hidePanelsBtn) hidePanelsBtn.hidden = isMissed;
+
     const newTradeBtn = byId("btn-new-trade");
     if (newTradeBtn) {
       if (isMissed) {
@@ -742,12 +765,37 @@
     }
 
     const missedSection = byId("missed-trades-section");
+    const dashSection = byId("dashboard");
+    const curveSection = byId("curve-panel");
+    const tradeSection = byId("trade-section");
+    const analyticsSection = byId("analytics");
+
     if (isMissed) {
       if (missedSection) missedSection.hidden = false;
+      if (dashSection) dashSection.hidden = true;
+      if (curveSection) curveSection.hidden = true;
+      if (tradeSection) tradeSection.hidden = true;
+      if (analyticsSection) analyticsSection.hidden = true;
       renderMissedTrades();
+      renderFooter();
     } else {
       if (missedSection) missedSection.hidden = true;
+      if (tradeSection) tradeSection.hidden = false;
+      const panelsHidden = !!(model && model.settings && model.settings.hidePanels);
+      if (dashSection) dashSection.hidden = panelsHidden;
+      if (curveSection) curveSection.hidden = panelsHidden;
+      if (analyticsSection) analyticsSection.hidden = panelsHidden;
       renderFilters();
+      renderDashboard();
+      renderCharts();
+      renderTable();
+      renderAnalytics();
+      renderBackup();
+      renderBlindBanner();
+      renderFooter();
+      if (detailsId) renderDetails();
+    }
+  }
       renderDashboard();
       renderCharts();
       renderTable();
@@ -1104,26 +1152,35 @@
       const opt = A.compareSlOptimization(trades, opts);
       const wick = opt.wick;
       const bodyStats = opt.body;
+      const spcStats = opt.spc || { totalR: 0, expectancy: 0, winRate: null, stopOutFreq: null, wins: 0, losses: 0, breakevens: 0, stopOuts: 0, avgWinR: 0 };
       const diff = opt.diff;
 
-      const winnerBadge = diff.winner === "body"
-        ? '<span class="pill pill-win">Body SL Advantage</span>'
-        : diff.winner === "wick"
-          ? '<span class="pill pill-win">Wick SL Advantage</span>'
-          : '<span class="pill pill-be">Equal Edge</span>';
+      const winnerBadge = diff.winner === "spc"
+        ? '<span class="pill pill-win" style="background:rgba(139,92,246,0.18);color:#a78bfa;border-color:rgba(139,92,246,0.35)">SPC SL Advantage</span>'
+        : diff.winner === "body"
+          ? '<span class="pill pill-win">Body SL Advantage</span>'
+          : diff.winner === "wick"
+            ? '<span class="pill pill-win">Wick SL Advantage</span>'
+            : '<span class="pill pill-be">Equal Edge</span>';
 
-      const diffSign = diff.expectancy > 0 ? "+" : "";
+      const winnerTitle = diff.winner === "spc"
+        ? "SPC SL (Space SL)"
+        : diff.winner === "body"
+          ? "Body SL"
+          : diff.winner === "wick"
+            ? "Wick SL"
+            : (diff.winnerLabel || "Equal Edge");
 
       body.innerHTML = `
         <div class="analytics-toolbar">
-          <span>Stop-Loss Optimization (Wick vs. Body) · Evaluated across ${opt.total} completed trade${opt.total === 1 ? '' : 's'}.</span>
+          <span>Stop-Loss Optimization (3-Way: Wick vs. Body vs. SPC) · Evaluated across ${opt.total} completed trade${opt.total === 1 ? '' : 's'}.</span>
           <div>${winnerBadge}</div>
         </div>
 
-        <div class="sl-opt-summary-banner ${diff.winner === 'body' ? 'winner-body' : diff.winner === 'wick' ? 'winner-wick' : ''}">
+        <div class="sl-opt-summary-banner ${diff.winner === 'spc' ? 'winner-spc' : diff.winner === 'body' ? 'winner-body' : diff.winner === 'wick' ? 'winner-wick' : ''}">
           <div class="sl-opt-summary-title">
-            <span>Net Expectancy Difference:</span>
-            <b class="mono ${diff.expectancy > 0 ? 'pos' : diff.expectancy < 0 ? 'neg' : 'zero'}">${diffSign}${A.formatR(diff.expectancy)} / trade</b>
+            <span>Optimal Strategy:</span>
+            <b class="mono ${diff.winner !== 'tie' ? 'pos' : 'zero'}">${winnerTitle}</b>
           </div>
           <p class="sl-opt-summary-desc">${esc(diff.summaryText)}</p>
         </div>
@@ -1151,6 +1208,11 @@
                 <div class="dash-card-label">Expectancy (Avg R)</div>
                 <div class="dash-card-value ${signedClass(wick.expectancy)}">${fmtSigned(wick.expectancy)}</div>
                 <div class="dash-card-sub">Net expected R per trade</div>
+              </div>
+              <div class="dash-card">
+                <div class="dash-card-label">Average Win R</div>
+                <div class="dash-card-value pos">+${A.formatNumber(wick.avgWinR, 2)}R</div>
+                <div class="dash-card-sub">Avg return per winning trade</div>
               </div>
               <div class="dash-card">
                 <div class="dash-card-label">Stop-Out Frequency</div>
@@ -1184,9 +1246,50 @@
                 <div class="dash-card-sub">Net expected R per trade</div>
               </div>
               <div class="dash-card">
+                <div class="dash-card-label">Average Win R</div>
+                <div class="dash-card-value pos">+${A.formatNumber(bodyStats.avgWinR, 2)}R</div>
+                <div class="dash-card-sub">Avg return per winning trade</div>
+              </div>
+              <div class="dash-card">
                 <div class="dash-card-label">Stop-Out Frequency</div>
                 <div class="dash-card-value ${bodyStats.stopOutFreq > 40 ? 'neg' : ''}">${bodyStats.stopOutFreq === null ? "—" : fmtPct(bodyStats.stopOutFreq)}</div>
                 <div class="dash-card-sub">${bodyStats.stopOuts} of ${opt.total} trades stopped out</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SPC SL Model Card -->
+          <div class="sl-model-panel">
+            <div class="sl-model-head">
+              <h4>SPC SL (Space SL)</h4>
+              <span class="pill" style="background:rgba(139,92,246,0.18);color:#a78bfa;border-color:rgba(139,92,246,0.35)">Breathing Room</span>
+            </div>
+            <p class="sl-model-subtitle">Stop loss placed with extra breathing space beyond the wick to absorb sweeps.</p>
+            <div class="sl-metrics-grid">
+              <div class="dash-card">
+                <div class="dash-card-label">Average Win Rate</div>
+                <div class="dash-card-value">${spcStats.winRate === null ? "—" : fmtPct(spcStats.winRate)}</div>
+                <div class="dash-card-sub">${spcStats.wins}W / ${spcStats.losses}L / ${spcStats.breakevens}BE</div>
+              </div>
+              <div class="dash-card">
+                <div class="dash-card-label">Total Net R</div>
+                <div class="dash-card-value ${signedClass(spcStats.totalR)}">${fmtSigned(spcStats.totalR)}</div>
+                <div class="dash-card-sub">Cumulative Net R</div>
+              </div>
+              <div class="dash-card">
+                <div class="dash-card-label">Expectancy (Avg R)</div>
+                <div class="dash-card-value ${signedClass(spcStats.expectancy)}">${fmtSigned(spcStats.expectancy)}</div>
+                <div class="dash-card-sub">Net expected R per trade</div>
+              </div>
+              <div class="dash-card">
+                <div class="dash-card-label">Average Win R</div>
+                <div class="dash-card-value pos">+${A.formatNumber(spcStats.avgWinR, 2)}R</div>
+                <div class="dash-card-sub">Avg return per winning trade</div>
+              </div>
+              <div class="dash-card">
+                <div class="dash-card-label">Stop-Out Frequency</div>
+                <div class="dash-card-value ${spcStats.stopOutFreq > 40 ? 'neg' : ''}">${spcStats.stopOutFreq === null ? "—" : fmtPct(spcStats.stopOutFreq)}</div>
+                <div class="dash-card-sub">${spcStats.stopOuts} of ${opt.total} trades stopped out</div>
               </div>
             </div>
           </div>
@@ -1199,20 +1302,34 @@
                 <th>Trade</th>
                 <th class="num">Wick SL (R:R)</th>
                 <th class="num">Body SL (R:R)</th>
+                <th class="num">SPC SL (R:R)</th>
                 <th class="num">Wick Outcome</th>
                 <th class="num">Body Outcome</th>
-                <th class="num">Net Δ (Body - Wick)</th>
+                <th class="num">SPC Outcome</th>
+                <th class="num">Best Strategy</th>
               </tr>
             </thead>
             <tbody>
-              ${opt.trades.slice(0, 30).map(r => `<tr>
-                <td class="mono">#${esc(r.trade.tradeNumber || r.trade.id)} ${esc(r.trade.instrument || '')}</td>
-                <td class="num">${esc(String(r.wickRr || "—"))}</td>
-                <td class="num">${esc(String(r.bodyRr || "—"))}</td>
-                <td class="num ${signedClass(r.wickR)}">${fmtSigned(r.wickR)}${r.wickStopped ? ' <span class="pill pill-loss">SL</span>' : ''}</td>
-                <td class="num ${signedClass(r.bodyR)}">${fmtSigned(r.bodyR)}${r.bodyStopped ? ' <span class="pill pill-loss">SL</span>' : ''}</td>
-                <td class="num ${signedClass(r.diffR)}"><b>${fmtSigned(r.diffR)}</b></td>
-              </tr>`).join('') || '<tr><td colspan="6" class="center muted">No trades to display.</td></tr>'}
+              ${opt.trades.slice(0, 50).map(r => {
+                let bestBadge = '<span class="pill pill-be">Tie</span>';
+                if (r.spcR > r.wickR && r.spcR > r.bodyR) {
+                  bestBadge = '<span class="pill" style="background:rgba(139,92,246,0.18);color:#a78bfa;border-color:rgba(139,92,246,0.35)">SPC SL</span>';
+                } else if (r.bodyR > r.wickR && r.bodyR > r.spcR) {
+                  bestBadge = '<span class="pill pill-win">Body SL</span>';
+                } else if (r.wickR > r.bodyR && r.wickR > r.spcR) {
+                  bestBadge = '<span class="pill pill-accent">Wick SL</span>';
+                }
+                return `<tr>
+                  <td class="mono">#${esc(r.trade.tradeNumber || r.trade.id)} ${esc(r.trade.instrument || '')}</td>
+                  <td class="num">${esc(String(r.wickRr || "—"))}</td>
+                  <td class="num">${esc(String(r.bodyRr || "—"))}</td>
+                  <td class="num">${esc(String(r.spcSl || "—"))}</td>
+                  <td class="num ${signedClass(r.wickR)}">${fmtSigned(r.wickR)}${r.wickStopped ? ' <span class="pill pill-loss">SL</span>' : ''}</td>
+                  <td class="num ${signedClass(r.bodyR)}">${fmtSigned(r.bodyR)}${r.bodyStopped ? ' <span class="pill pill-loss">SL</span>' : ''}</td>
+                  <td class="num ${signedClass(r.spcR)}">${fmtSigned(r.spcR)}${r.spcStopped ? ' <span class="pill pill-loss">SL</span>' : ''}</td>
+                  <td class="num">${bestBadge}</td>
+                </tr>`;
+              }).join('') || '<tr><td colspan="8" class="center muted">No trades to display.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1752,6 +1869,7 @@
       stopLoss: null,
       wickRr: null,
       bodyRr: null,
+      spcSl: null,
       riskR: 1,
       exitPlan: (model.settings.lastExitPlan || A.defaultExitPlan()).map((l) => ({ ...l })),
       exitPlanTemplateId: model.settings.lastTemplateId || null,
@@ -2160,7 +2278,7 @@
             <div class="static-readout" data-risk-distance>—</div>
           </div>
         </div>
-        <div class="form-grid form-grid-2" style="margin-top:10px">
+        <div class="form-grid form-grid-3" style="margin-top:10px">
           <div class="field" data-wrap="wickRr">
             <label>Wick SL (R:R)</label>
             <input type="text" name="wickRr" value="${esc(draft.wickRr || '')}" placeholder="e.g. 1:6R or 6">
@@ -2172,6 +2290,12 @@
             <input type="text" name="bodyRr" value="${esc(draft.bodyRr || '')}" placeholder="e.g. 1:7.5R or 7.5">
             <span class="hint">Manual Body stop R:R</span>
             <div class="field-errors" data-errors="bodyRr"></div>
+          </div>
+          <div class="field" data-wrap="spcSl">
+            <label>SPC SL (R:R)</label>
+            <input type="text" name="spcSl" value="${esc(draft.spcSl || '')}" placeholder="e.g. 6.4 or -1">
+            <span class="hint">Manual Space stop R:R</span>
+            <div class="field-errors" data-errors="spcSl"></div>
           </div>
         </div>
       </div>
@@ -2240,6 +2364,7 @@
     const riskDistanceEl = form.querySelector("[data-risk-distance]");
     const wickRrInput = form.querySelector('[name="wickRr"]');
     const bodyRrInput = form.querySelector('[name="bodyRr"]');
+    const spcSlInput = form.querySelector('[name="spcSl"]');
     if (wickRrInput) {
       const onWickChange = (e) => { draft.wickRr = e.target.value; };
       wickRrInput.addEventListener("input", onWickChange);
@@ -2249,6 +2374,11 @@
       const onBodyChange = (e) => { draft.bodyRr = e.target.value; };
       bodyRrInput.addEventListener("input", onBodyChange);
       bodyRrInput.addEventListener("change", onBodyChange);
+    }
+    if (spcSlInput) {
+      const onSpcChange = (e) => { draft.spcSl = e.target.value; };
+      spcSlInput.addEventListener("input", onSpcChange);
+      spcSlInput.addEventListener("change", onSpcChange);
     }
 
     const shotHost = form.querySelector("[data-shots]");
@@ -2485,13 +2615,17 @@
     next.stopLoss = A.toNum(get("stopLoss").value);
     const wickEl = form.querySelector('[name="wickRr"]');
     const bodyEl = form.querySelector('[name="bodyRr"]');
+    const spcEl = form.querySelector('[name="spcSl"]');
     const wickVal = wickEl ? wickEl.value.trim() : (draft && draft.wickRr !== undefined && draft.wickRr !== null ? String(draft.wickRr).trim() : "");
     const bodyVal = bodyEl ? bodyEl.value.trim() : (draft && draft.bodyRr !== undefined && draft.bodyRr !== null ? String(draft.bodyRr).trim() : "");
+    const spcVal = spcEl ? spcEl.value.trim() : (draft && draft.spcSl !== undefined && draft.spcSl !== null ? String(draft.spcSl).trim() : "");
     next.wickRr = wickVal ? (A.toNum(wickVal) !== null ? A.toNum(wickVal) : wickVal) : null;
     next.bodyRr = bodyVal ? (A.toNum(bodyVal) !== null ? A.toNum(bodyVal) : bodyVal) : null;
+    next.spcSl = spcVal ? (A.toNum(spcVal) !== null ? A.toNum(spcVal) : spcVal) : null;
     if (draft) {
       draft.wickRr = next.wickRr;
       draft.bodyRr = next.bodyRr;
+      draft.spcSl = next.spcSl;
     }
     next.riskR = A.toNum(get("riskR").value);
     next.notes = get("notes").value;
@@ -2691,6 +2825,7 @@
           <div><span>Stop Loss</span><b>${fmtPrice(trade.stopLoss, trade)}</b></div>
           <div><span>Wick SL (R:R)</span><b>${trade.wickRr ? esc(String(trade.wickRr)) : "—"}</b></div>
           <div><span>Body SL (R:R)</span><b>${trade.bodyRr ? esc(String(trade.bodyRr)) : "—"}</b></div>
+          <div><span>SPC SL (R:R)</span><b>${trade.spcSl ? esc(String(trade.spcSl)) : "—"}</b></div>
           <div><span>Risk distance</span><b>${trade.rDistance === null ? "—" : fmtPrice(trade.rDistance, trade)}</b></div>
           <div><span>Exit Plan</span><b class="mono">${esc(A.planString(trade.exitPlan))}</b></div>
         </div>
@@ -3435,6 +3570,7 @@
   function inlineRawValue(trade, field) {
     if (field === "wickSl" || field === "wickRr") return trade.wickRr === null || trade.wickRr === undefined ? "" : trade.wickRr;
     if (field === "bodySl" || field === "bodyRr") return trade.bodyRr === null || trade.bodyRr === undefined ? "" : trade.bodyRr;
+    if (field === "spcSl" || field === "spcRr") return trade.spcSl === null || trade.spcSl === undefined ? "" : trade.spcSl;
     if (field === "mfe" || field === "mae") return trade.tradePath && trade.tradePath[field] !== null && trade.tradePath[field] !== undefined ? trade.tradePath[field] : "";
     if (field === "finalR") return A.toNum(trade.finalROverride) === null ? "" : trade.finalROverride;
     if (field === "pathComplete") return trade.tradePath && trade.tradePath.pathComplete ? "true" : "false";
@@ -3530,6 +3666,8 @@
         patch.wickRr = raw.trim() ? (A.toNum(raw) !== null ? A.toNum(raw) : raw.trim()) : null;
       } else if (field === "bodySl" || field === "bodyRr") {
         patch.bodyRr = raw.trim() ? (A.toNum(raw) !== null ? A.toNum(raw) : raw.trim()) : null;
+      } else if (field === "spcSl" || field === "spcRr") {
+        patch.spcSl = raw.trim() ? (A.toNum(raw) !== null ? A.toNum(raw) : raw.trim()) : null;
       } else {
         patch[field] = raw;
       }

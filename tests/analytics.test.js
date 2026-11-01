@@ -474,32 +474,40 @@ test("dual SL schema fields, calcRr, and formatRr", () => {
   assert.strictEqual(rrShort, 7.5);
   assert.strictEqual(A.formatRr(rrShort), "1:7.5R");
 
-  // table columns include wickSl and bodySl
+  // table columns include wickSl, bodySl, and spcSl
   const wickCol = A.COLUMNS.find((c) => c.key === "wickSl");
   const bodyCol = A.COLUMNS.find((c) => c.key === "bodySl");
+  const spcCol = A.COLUMNS.find((c) => c.key === "spcSl");
   assert.ok(wickCol, "Wick SL column exists");
   assert.ok(bodyCol, "Body SL column exists");
+  assert.ok(spcCol, "SPC SL column exists");
+  assert.strictEqual(spcCol.label, "SPC SL");
+  assert.strictEqual(spcCol.sortable, true);
 
-  // trade decoration preserves manual dual SL fields (string, number, or null)
+  // trade decoration preserves manual dual/triple SL fields (string, number, or null)
   const tradeStr = baseTrade({
     entry: 100,
     stopLoss: 95,
     wickRr: "1:6R",
     bodyRr: "1:7.5R",
+    spcSl: "1:5.5R",
   });
   const decStr = A.decorate(tradeStr);
   assert.strictEqual(decStr.wickRr, "1:6R");
   assert.strictEqual(decStr.bodyRr, "1:7.5R");
+  assert.strictEqual(decStr.spcSl, "1:5.5R");
 
   const tradeNum = baseTrade({
     entry: 100,
     stopLoss: 95,
     wickRr: 6,
     bodyRr: 7.5,
+    spcSl: 5.5,
   });
   const decNum = A.decorate(tradeNum);
   assert.strictEqual(decNum.wickRr, 6);
   assert.strictEqual(decNum.bodyRr, 7.5);
+  assert.strictEqual(decNum.spcSl, 5.5);
 
   const tradeEmpty = baseTrade({
     entry: 100,
@@ -508,9 +516,10 @@ test("dual SL schema fields, calcRr, and formatRr", () => {
   const decEmpty = A.decorate(tradeEmpty);
   assert.strictEqual(decEmpty.wickRr, null);
   assert.strictEqual(decEmpty.bodyRr, null);
+  assert.strictEqual(decEmpty.spcSl, null);
 });
 
-test("compareSlOptimization computes side-by-side metrics and expectancy difference", () => {
+test("compareSlOptimization computes 3-way side-by-side metrics and expectancy difference", () => {
   const trades = [
     baseTrade({
       entry: 100,
@@ -518,6 +527,7 @@ test("compareSlOptimization computes side-by-side metrics and expectancy differe
       slType: "wick",
       wickSlPrice: 95,
       bodySlPrice: 97.5, // 2.5 risk vs 5 risk (ratio 2.0)
+      spcSl: 6.4,
       tradePath: { mfe: 4, mae: 0.3, pathComplete: true },
       finalROverride: 3,
     }),
@@ -527,6 +537,7 @@ test("compareSlOptimization computes side-by-side metrics and expectancy differe
       slType: "wick",
       wickSlPrice: 95,
       bodySlPrice: 97.5,
+      spcSl: -1,
       tradePath: { mfe: 1, mae: 0.6, pathComplete: true }, // mae 0.6 in wick R > 0.5 (body threshold), stopped out on body!
       finalROverride: 1,
     }),
@@ -535,8 +546,13 @@ test("compareSlOptimization computes side-by-side metrics and expectancy differe
   assert.strictEqual(comparison.total, 2);
   assert.ok(comparison.wick.winRate !== null);
   assert.ok(comparison.body.winRate !== null);
+  assert.ok(comparison.spc.winRate !== null);
+  assert.strictEqual(comparison.spc.wins, 1);
+  assert.strictEqual(comparison.spc.losses, 1);
+  assert.strictEqual(comparison.spc.totalR, 5.4); // 6.4 + (-1.0) = 5.4
+  assert.strictEqual(comparison.spc.expectancy, 2.7); // 5.4 / 2 = 2.7
   assert.ok(comparison.diff.expectancy !== undefined);
-  assert.ok(["body", "wick", "tie"].includes(comparison.diff.winner));
+  assert.ok(["body", "wick", "spc", "tie"].includes(comparison.diff.winner));
 });
 
 test("compareFullTargetVsPartials calculates theoretical Full Runner R vs Realized R on winning trades", () => {
@@ -595,6 +611,8 @@ test("compareFullTargetVsPartials uses REM. EXIT R and ignores Body SL / Wick SL
   assert.strictEqual(res.allNetRealizedR, 21.46); // 23.46 - 2 = 21.46
   assert.strictEqual(res.allNetPotentialR, 29.66); // 31.66 - 2 = 29.66
   assert.strictEqual(res.varianceR, 8.2); // 31.66 - 23.46 = 8.20
+  assert.ok(!res.summaryText.includes("++"), "Summary text must not contain ++ typo");
+  assert.ok(res.summaryText.includes("+8.2R"), "Summary text correctly formats single +8.2R");
 });
 
 test("missed trades validation and statistics", () => {
