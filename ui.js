@@ -723,15 +723,40 @@
   function render() {
     setTheme();
     setPanelVisibility();
-    renderFilters();
-    renderDashboard();
-    renderCharts();
-    renderTable();
-    renderAnalytics();
-    renderBackup();
-    renderBlindBanner();
-    renderFooter();
-    if (detailsId) renderDetails();
+
+    const isMissed = model && model.view === "missed";
+    document.body.classList.toggle("missed-trades-view", isMissed);
+
+    const missedBtn = byId("btn-missed-trades");
+    if (missedBtn) missedBtn.classList.toggle("is-active", isMissed);
+
+    const newTradeBtn = byId("btn-new-trade");
+    if (newTradeBtn) {
+      if (isMissed) {
+        newTradeBtn.innerHTML = '<span aria-hidden="true">+</span> Log Missed Trade';
+        newTradeBtn.title = "Log Missed Trade (Ctrl+N)";
+      } else {
+        newTradeBtn.innerHTML = '<span aria-hidden="true">+</span> New Trade';
+        newTradeBtn.title = "New trade (Ctrl+N)";
+      }
+    }
+
+    const missedSection = byId("missed-trades-section");
+    if (isMissed) {
+      if (missedSection) missedSection.hidden = false;
+      renderMissedTrades();
+    } else {
+      if (missedSection) missedSection.hidden = true;
+      renderFilters();
+      renderDashboard();
+      renderCharts();
+      renderTable();
+      renderAnalytics();
+      renderBackup();
+      renderBlindBanner();
+      renderFooter();
+      if (detailsId) renderDetails();
+    }
   }
 
   function groupTableHTML(groups, firstLabel) {
@@ -3165,6 +3190,7 @@
       stats.innerHTML = `<span><b>${c.trades || 0}</b> trades${demo ? ` <span class="faint">(${demo} demo)</span>` : ""}</span>
         <span><b>${c.templates || 0}</b> Exit Plans</span>
         <span><b>${c.screenshots || 0}</b> screenshots</span>
+        <span><b>${c.missedTrades !== undefined ? c.missedTrades : (model.missedTrades ? model.missedTrades.length : 0)}</b> missed trades</span>
         ${estimate && estimate.usage !== undefined ? `<span><b>${formatBytes(estimate.usage)}</b> used${estimate.quota ? ` of ${formatBytes(estimate.quota)}` : ""}</span>` : ""}`;
     });
 
@@ -3280,6 +3306,7 @@
         templates: templates.length,
         screenshots: screenshots.length,
         settings: payload.settings && typeof payload.settings === "object" ? Object.keys(payload.settings).length : 0,
+        missedTrades: Array.isArray(payload.missedTrades) ? payload.missedTrades.length : 0,
       },
     };
   }
@@ -3308,6 +3335,7 @@
         <div><span>Trades</span><b>${counts.trades}</b></div>
         <div><span>Exit Plans</span><b>${counts.templates}</b></div>
         <div><span>Screenshots</span><b>${counts.screenshots}</b></div>
+        <div><span>Missed Trades</span><b>${counts.missedTrades || 0}</b></div>
         <div><span>Setting keys</span><b>${counts.settings}</b></div>
       </div>
       ${validation.warnings.length ? `<div class="form-notice warn">${validation.warnings.map(esc).join("<br>")}</div>` : ""}
@@ -3652,8 +3680,815 @@
     });
   }
 
+  /* ==========================================================================
+     MISSED TRADES LOGIC, MODAL & LIGHTBOX
+     ========================================================================== */
+
+  const cardActiveTf = new Map();
+
+  async function processChartImage(input) {
+    if (typeof input === "string") {
+      return input.trim();
+    }
+    const { base64, name } = await imageFileToBase64(input);
+    const apiKey = model && model.settings && model.settings.imgbbApiKey;
+    if (apiKey) {
+      try {
+        const uploaded = await uploadToImgBB(base64, name);
+        return uploaded.url;
+      } catch (err) {
+        console.warn("ImgBB upload failed; saving compressed local image instead.", err);
+      }
+    }
+    return "data:image/jpeg;base64," + base64;
+  }
+
+  function renderMissedTrades() {
+    const section = byId("missed-trades-section");
+    if (!section || section.hidden) return;
+
+    // 1. Summary Bar
+    const stats = model.missedStats || { total: 0, totalR: 0, topReason: "—", topReasonCount: 0 };
+    byId("missed-stat-count").textContent = stats.total;
+    const rVal = stats.totalR || 0;
+    const rEl = byId("missed-stat-r");
+    rEl.textContent = (rVal >= 0 ? "+" : "") + A.formatNumber(rVal, 1) + "R";
+    rEl.className = "dash-card-value " + (rVal > 0 ? "pos" : rVal < 0 ? "neg" : "zero");
+    byId("missed-stat-reason").textContent = stats.topReason || "—";
+    byId("missed-stat-reason-sub").textContent = stats.topReasonCount
+      ? `${stats.topReasonCount} trade${stats.topReasonCount === 1 ? "" : "s"} (${Math.round((stats.topReasonCount / (stats.total || 1)) * 100)}%)`
+      : "Most frequent reflection";
+
+    // 2. Filter Controls
+    const instSelect = byId("missed-filter-instrument");
+    const currentInst = model.missedFilters.instrument || "";
+    const instruments = A.instrumentList(model.settings);
+    instSelect.innerHTML = `<option value="">All instruments</option>` +
+      instruments.map((i) => `<option value="${esc(i)}"${currentInst === i ? " selected" : ""}>${esc(i)}</option>`).join("");
+
+    const sessSelect = byId("missed-filter-session");
+    const currentSess = model.missedFilters.session || "";
+    const sessions = A.sessionList(model.settings);
+    sessSelect.innerHTML = `<option value="">All sessions</option>` +
+      sessions.map((s) => `<option value="${esc(s)}"${currentSess === s ? " selected" : ""}>${esc(s)}</option>`).join("");
+
+    const searchInput = byId("missed-search");
+    if (document.activeElement !== searchInput) {
+      searchInput.value = model.missedFilters.search || "";
+    }
+
+    // Reason pills
+    const reasons = (model.missedReasons && model.missedReasons.length) ? model.missedReasons : A.DEFAULT_MISSED_REASONS;
+    const activeReason = model.missedFilters.reason || "All";
+    const pillsHost = byId("missed-reason-pills");
+    let pillsHTML = `<button type="button" class="chip${activeReason === "All" ? " active" : ""}" data-reason="All">All</button>`;
+    pillsHTML += reasons.map((r) =>
+      `<button type="button" class="chip${activeReason === r ? " active" : ""}" data-reason="${esc(r)}">
+        <span>${esc(r)}</span>
+        <span class="chip-del" data-del-filter-reason="${esc(r)}" title="Remove '${esc(r)}' from list">×</span>
+      </button>`
+    ).join("");
+    pillsHTML += `
+      <div class="missed-inline-add-reason">
+        <input type="text" id="missed-filter-add-input" class="missed-mini-input" placeholder="Add custom reason..." />
+        <button type="button" class="btn btn-ghost btn-small" id="btn-save-filter-reason">+ Add Reason</button>
+      </div>
+    `;
+    pillsHost.innerHTML = pillsHTML;
+
+    // 3. Grid & Cards
+    const grid = byId("missed-grid");
+    const empty = byId("missed-empty");
+    const trades = model.filteredMissedTrades || [];
+
+    if (!trades.length) {
+      grid.innerHTML = "";
+      empty.hidden = false;
+      byId("missed-empty-sub").textContent = model.missedTrades.length
+        ? "No missed trades match your active filters."
+        : "No missed trades recorded yet. Start tracking setups you hesitated on!";
+      return;
+    }
+
+    empty.hidden = true;
+    grid.innerHTML = trades.map((t) => {
+      const hasHtf = !!t.htfScreenshot;
+      const hasLtf = !!t.ltfScreenshot;
+      let activeTf = cardActiveTf.get(t.id);
+      if (!activeTf) {
+        activeTf = hasHtf ? "HTF" : (hasLtf ? "LTF" : "HTF");
+        cardActiveTf.set(t.id, activeTf);
+      }
+      const currentSrc = activeTf === "HTF" ? t.htfScreenshot : t.ltfScreenshot;
+      const fallbackSrc = currentSrc || (activeTf === "HTF" ? t.ltfScreenshot : t.htfScreenshot);
+
+      const shotMarkup = fallbackSrc
+        ? `<img src="${esc(fallbackSrc)}" alt="Missed trade ${esc(t.instrument || '')}" loading="lazy" />`
+        : `<div class="missed-no-shot"><span class="missed-no-shot-icon">📷</span><span>No chart attached</span></div>`;
+
+      let toggleMarkup = "";
+      if (hasHtf && hasLtf) {
+        toggleMarkup = `
+          <div class="missed-tf-toggle">
+            <button type="button" class="missed-tf-btn${activeTf === "HTF" ? " active" : ""}" data-card-tf="HTF" data-trade-id="${esc(t.id)}">HTF</button>
+            <button type="button" class="missed-tf-btn${activeTf === "LTF" ? " active" : ""}" data-card-tf="LTF" data-trade-id="${esc(t.id)}">LTF</button>
+          </div>
+        `;
+      } else if (hasHtf) {
+        toggleMarkup = `<span class="missed-tf-single">HTF</span>`;
+      } else if (hasLtf) {
+        toggleMarkup = `<span class="missed-tf-single">LTF</span>`;
+      }
+
+      const potR = A.toNum(t.potentialR) || 0;
+      const rBadge = `<span class="pill pill-win missed-potential-r">+${A.formatNumber(potR, 1)}R</span>`;
+      const isLong = t.direction === "Long";
+      const dirBadge = `<span class="pill ${isLong ? "pill-win" : "pill-loss"}">${esc(t.direction || "Long")}</span>`;
+
+      const lesson = String(t.notes || "No reflection recorded.");
+      const isLongText = lesson.length > 130;
+
+      return `
+        <article class="missed-card" data-missed-id="${esc(t.id)}">
+          <div class="missed-card-screen" data-action="lightbox">
+            ${shotMarkup}
+            ${toggleMarkup}
+          </div>
+          <div class="missed-card-footer">
+            <div class="missed-footer-row1">
+              <div class="missed-badges-left">
+                <span class="pill">${esc(t.date || "—")}</span>
+                <span class="pill">${esc(t.session || "—")}</span>
+                <span class="pill">${esc(t.instrument || "—")}</span>
+                ${dirBadge}
+              </div>
+              <div>
+                ${rBadge}
+              </div>
+            </div>
+            <div class="missed-footer-row2">
+              <div class="missed-lesson-wrap">
+                <span class="pill pill-warn missed-reason-badge">${esc(t.reason || "Hesitation")}</span>
+                <p class="missed-lesson-text clamp-3">${esc(lesson)}${isLongText ? ' <button type="button" class="missed-expand-btn" data-action="expand">more</button>' : ''}</p>
+              </div>
+              <div class="missed-card-actions">
+                <button type="button" class="icon-btn" data-action="edit" title="Edit missed trade">✎</button>
+                <button type="button" class="icon-btn danger" data-action="delete" title="Delete missed trade">×</button>
+              </div>
+            </div>
+          </div>
+        </article>
+      `;
+    }).join("");
+  }
+
+  function openMissedTradeModal(existingTrade) {
+    const isNew = !existingTrade;
+    const draft = Object.assign({}, existingTrade || {
+      date: todayISO(),
+      instrument: A.instrumentList(model.settings)[0] || "S&P500",
+      session: A.sessionList(model.settings)[0] || "London",
+      direction: "Long",
+      potentialR: "",
+      reason: "Hesitation",
+      notes: "",
+      htfScreenshot: null,
+      ltfScreenshot: null,
+    });
+
+    let currentDirection = draft.direction || "Long";
+    let selectedReason = draft.reason || "Hesitation";
+    let htfUrl = draft.htfScreenshot || null;
+    let ltfUrl = draft.ltfScreenshot || null;
+    let isUploadingHtf = false;
+    let isUploadingLtf = false;
+
+    const body = h("div", { class: "trade-form" });
+
+    const instruments = A.instrumentList(model.settings);
+    const sessions = A.sessionList(model.settings);
+
+    function renderTagPicker() {
+      const reasons = (model.missedReasons && model.missedReasons.length) ? model.missedReasons : A.DEFAULT_MISSED_REASONS;
+      const allReasons = Array.from(new Set([...reasons, selectedReason].filter(Boolean)));
+      return allReasons.map((r) =>
+        `<button type="button" class="missed-tag-pill${selectedReason === r ? " active" : ""}" data-modal-reason="${esc(r)}">
+          <span>${esc(r)}</span>
+          <span class="missed-tag-del" data-del-modal-reason="${esc(r)}" title="Remove '${esc(r)}' from list">×</span>
+        </button>`
+      ).join("");
+    }
+
+    function renderDropzone(slot, url, isUploading) {
+      if (isUploading) {
+        return `
+          <div class="missed-dropzone-prompt">
+            <span class="missed-dropzone-spinner"></span>
+            <b>Processing chart...</b>
+          </div>
+        `;
+      }
+      if (url) {
+        return `
+          <img src="${esc(url)}" class="missed-dropzone-preview" alt="${slot} chart preview" />
+          <button type="button" class="missed-dropzone-remove" data-remove-slot="${slot}" title="Remove screenshot">×</button>
+        `;
+      }
+      return `
+        <div class="missed-dropzone-slot-label">${slot.toUpperCase()} Screenshot</div>
+        <div class="missed-dropzone-prompt">
+          <b>Drag & drop</b>, click to browse, or paste <b>Ctrl+V</b>
+          <div class="hint" style="margin-top:4px;">Accepts chart image files or links</div>
+        </div>
+        <input type="file" accept="image/*" data-file-slot="${slot}" hidden />
+      `;
+    }
+
+    body.innerHTML = `
+      <div class="form-grid form-grid-4">
+        <div class="field">
+          <label>Date</label>
+          <input type="date" name="date" value="${esc(draft.date || todayISO())}" required />
+        </div>
+        <div class="field">
+          <label>Instrument</label>
+          <select name="instrument">
+            ${instruments.map((i) => `<option value="${esc(i)}"${(draft.instrument || "") === i ? " selected" : ""}>${esc(i)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label>Session</label>
+          <select name="session">
+            ${sessions.map((s) => `<option value="${esc(s)}"${(draft.session || "") === s ? " selected" : ""}>${esc(s)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label>Direction</label>
+          <div class="segmented" role="group" aria-label="Trade direction">
+            <button type="button" class="seg${currentDirection === "Long" ? " active" : ""}" data-dir="Long">Long</button>
+            <button type="button" class="seg${currentDirection === "Short" ? " active" : ""}" data-dir="Short">Short</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-grid form-grid-4" style="margin-top:14px;">
+        <div class="field">
+          <label>Potential R (Theoretical)</label>
+          <input type="number" step="0.1" min="0" name="potentialR" value="${draft.potentialR !== undefined && draft.potentialR !== null ? draft.potentialR : ""}" placeholder="e.g. 5.5" required />
+          <span class="hint">Theoretical R:R if executed to target</span>
+        </div>
+        <div class="field span-3">
+          <label>Missed Reason</label>
+          <div class="missed-tag-picker" id="modal-tag-picker">
+            ${renderTagPicker()}
+          </div>
+          <div style="display:flex; gap:6px;">
+            <input type="text" id="modal-custom-reason" placeholder="Add custom reason..." style="font-size:12px; padding:5px 8px; flex:1;" />
+            <button type="button" class="btn btn-ghost btn-small" id="btn-add-custom-reason">+ Add Reason</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:14px;">
+        <label>Lesson / Reflection ("What stopped me from executing, and how do I fix it?")</label>
+        <textarea name="notes" rows="3" placeholder="What stopped me from executing, and how do I fix it?">${esc(draft.notes || "")}</textarea>
+      </div>
+
+      <div class="field" style="margin-top:14px;">
+        <label>Screenshots (HTF & LTF Charts)</label>
+        <div class="missed-dropzone-grid">
+          <div class="missed-dropzone" data-dropzone="htf" tabindex="0">
+            ${renderDropzone("htf", htfUrl, isUploadingHtf)}
+          </div>
+          <div class="missed-dropzone" data-dropzone="ltf" tabindex="0">
+            ${renderDropzone("ltf", ltfUrl, isUploadingLtf)}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Direction segmented control
+    body.querySelectorAll("[data-dir]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        currentDirection = btn.dataset.dir;
+        body.querySelectorAll("[data-dir]").forEach((b) => b.classList.toggle("active", b.dataset.dir === currentDirection));
+      });
+    });
+
+    // Tag pills
+    function updateTagsUI() {
+      const picker = body.querySelector("#modal-tag-picker");
+      if (picker) picker.innerHTML = renderTagPicker();
+    }
+
+    body.addEventListener("click", async (e) => {
+      const delBtn = e.target.closest("[data-del-modal-reason]");
+      if (delBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const reasonToDel = delBtn.dataset.delModalReason;
+        await H.deleteMissedReason(reasonToDel);
+        if (selectedReason === reasonToDel) {
+          selectedReason = (model.missedReasons && model.missedReasons[0]) || "Hesitation";
+        }
+        updateTagsUI();
+        return;
+      }
+
+      const pill = e.target.closest("[data-modal-reason]");
+      if (pill) {
+        selectedReason = pill.dataset.modalReason;
+        updateTagsUI();
+      }
+    });
+
+    const customInput = body.querySelector("#modal-custom-reason");
+    const addCustomBtn = body.querySelector("#btn-add-custom-reason");
+    async function addCustomTag() {
+      const val = customInput.value.trim();
+      if (val) {
+        await H.saveMissedReason(val);
+        selectedReason = val;
+        customInput.value = "";
+        updateTagsUI();
+      }
+    }
+    addCustomBtn.addEventListener("click", addCustomTag);
+    customInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addCustomTag();
+      }
+    });
+
+    // Dropzone management
+    function updateDropzonesUI() {
+      const htfZone = body.querySelector('[data-dropzone="htf"]');
+      const ltfZone = body.querySelector('[data-dropzone="ltf"]');
+      if (htfZone) htfZone.innerHTML = renderDropzone("htf", htfUrl, isUploadingHtf);
+      if (ltfZone) ltfZone.innerHTML = renderDropzone("ltf", ltfUrl, isUploadingLtf);
+      attachDropzoneEvents();
+    }
+
+    async function handleFileSlot(slot, fileOrUrl) {
+      if (slot === "htf") isUploadingHtf = true;
+      else isUploadingLtf = true;
+      updateDropzonesUI();
+
+      try {
+        const url = await processChartImage(fileOrUrl);
+        if (slot === "htf") htfUrl = url;
+        else ltfUrl = url;
+      } catch (err) {
+        toast(err.message || "Could not process image.", { type: "error" });
+      } finally {
+        if (slot === "htf") isUploadingHtf = false;
+        else isUploadingLtf = false;
+        updateDropzonesUI();
+      }
+    }
+
+    function attachDropzoneEvents() {
+      ["htf", "ltf"].forEach((slot) => {
+        const zone = body.querySelector(`[data-dropzone="${slot}"]`);
+        if (!zone) return;
+
+        zone.onclick = (e) => {
+          if (e.target.closest("[data-remove-slot]")) {
+            e.stopPropagation();
+            if (slot === "htf") htfUrl = null;
+            else ltfUrl = null;
+            updateDropzonesUI();
+            return;
+          }
+          const fileInput = zone.querySelector("input[type=file]");
+          if (fileInput) fileInput.click();
+        };
+
+        const fileInput = zone.querySelector("input[type=file]");
+        if (fileInput) {
+          fileInput.onchange = (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (file) handleFileSlot(slot, file);
+          };
+        }
+
+        zone.ondragover = (e) => {
+          e.preventDefault();
+          zone.classList.add("drag-over");
+        };
+        zone.ondragleave = () => zone.classList.remove("drag-over");
+        zone.ondrop = (e) => {
+          e.preventDefault();
+          zone.classList.remove("drag-over");
+          const file = e.dataTransfer.files && e.dataTransfer.files[0];
+          if (file) {
+            handleFileSlot(slot, file);
+          } else {
+            const text = e.dataTransfer.getData("text");
+            if (text && /^https?:\/\//i.test(text.trim())) {
+              handleFileSlot(slot, text.trim());
+            }
+          }
+        };
+      });
+    }
+
+    attachDropzoneEvents();
+
+    // Global paste within modal
+    body.addEventListener("paste", async (e) => {
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA") && active.id !== "modal-custom-reason") {
+        const items = e.clipboardData && e.clipboardData.items;
+        let imgItem = null;
+        if (items) {
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type && items[i].type.startsWith("image/")) {
+              imgItem = items[i].getAsFile();
+              break;
+            }
+          }
+        }
+        if (!imgItem) return;
+      }
+
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      let file = null;
+      const items = clipboardData.items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type && items[i].type.startsWith("image/")) {
+            file = items[i].getAsFile();
+            break;
+          }
+        }
+      }
+
+      const text = clipboardData.getData("text");
+      const isUrl = text && (/^https?:\/\/.+\.(png|jpe?g|webp|gif)/i.test(text.trim()) || text.includes("tradingview.com/x/"));
+
+      if (file || isUrl) {
+        e.preventDefault();
+        const targetSlot = !htfUrl ? "htf" : (!ltfUrl ? "ltf" : "htf");
+        await handleFileSlot(targetSlot, file || text.trim());
+        toast(`Chart pasted to ${targetSlot.toUpperCase()}`, { type: "success" });
+      }
+    });
+
+    const footer = h("div", { class: "modal-foot" });
+    const cancelBtn = h("button", { type: "button", class: "btn btn-ghost", text: "Cancel", onclick: () => entry.close("cancel") });
+    const saveBtn = h("button", { type: "button", class: "btn btn-primary", text: isNew ? "Log Missed Trade" : "Save Changes" });
+    footer.appendChild(cancelBtn);
+    footer.appendChild(saveBtn);
+
+    const entry = openModal({
+      title: isNew ? "Log Missed Trade" : "Edit Missed Trade",
+      subtitle: "Capture chart context, psychological reasons, and lessons.",
+      size: "modal-md",
+      body,
+      footer,
+    });
+
+    saveBtn.addEventListener("click", async () => {
+      const formEl = body;
+      const date = formEl.querySelector('[name="date"]').value;
+      const instrument = formEl.querySelector('[name="instrument"]').value;
+      const session = formEl.querySelector('[name="session"]').value;
+      const potentialR = A.toNum(formEl.querySelector('[name="potentialR"]').value);
+      const notes = formEl.querySelector('[name="notes"]').value;
+
+      const tradeData = {
+        id: draft.id,
+        date,
+        instrument,
+        session,
+        direction: currentDirection,
+        potentialR,
+        reason: selectedReason || "Hesitation",
+        notes,
+        htfScreenshot: htfUrl,
+        ltfScreenshot: ltfUrl,
+        createdAt: draft.createdAt,
+      };
+
+      const result = await H.saveMissedTrade(tradeData);
+      if (!result.ok) {
+        toast((result.errors && result.errors[0]) || "Could not save missed trade.", { type: "error" });
+        return;
+      }
+      entry.close("save");
+      toast(isNew ? "Missed trade logged." : "Missed trade updated.", { type: "success" });
+    });
+  }
+
+  function openMissedLightbox(trade, initialTf) {
+    const hasHtf = !!trade.htfScreenshot;
+    const hasLtf = !!trade.ltfScreenshot;
+    let currentTf = initialTf || (hasHtf ? "HTF" : "LTF");
+    if (currentTf === "HTF" && !hasHtf && hasLtf) currentTf = "LTF";
+    if (currentTf === "LTF" && !hasLtf && hasHtf) currentTf = "HTF";
+
+    let zoom = 1;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+
+    const overlay = h("div", { class: "missed-lightbox-overlay" });
+    const head = h("div", { class: "missed-lightbox-head" });
+    const titleEl = h("div", { class: "missed-lightbox-title" });
+    titleEl.innerHTML = `<span><b>#Missed Trade</b> · ${esc(trade.instrument || "")} ${esc(trade.direction || "")} · <span class="pos">+${A.formatNumber(trade.potentialR, 1)}R</span> · <span class="muted">${esc(trade.reason || "")}</span></span>`;
+
+    const tfSwitcher = h("div", { class: "missed-tf-toggle" });
+    if (hasHtf && hasLtf) {
+      tfSwitcher.innerHTML = `
+        <button type="button" class="missed-tf-btn${currentTf === "HTF" ? " active" : ""}" data-lb-tf="HTF">HTF</button>
+        <button type="button" class="missed-tf-btn${currentTf === "LTF" ? " active" : ""}" data-lb-tf="LTF">LTF</button>
+      `;
+    }
+
+    const controls = h("div", { class: "missed-lightbox-controls" });
+    const zoomInBtn = h("button", { type: "button", class: "missed-lightbox-btn", text: "Zoom +", title: "Zoom in" });
+    const zoomOutBtn = h("button", { type: "button", class: "missed-lightbox-btn", text: "Zoom −", title: "Zoom out" });
+    const zoomResetBtn = h("button", { type: "button", class: "missed-lightbox-btn", text: "1:1", title: "Reset zoom" });
+    const closeBtn = h("button", { type: "button", class: "missed-lightbox-btn", text: "✕ Close", title: "Close (Esc)" });
+    controls.appendChild(zoomInBtn);
+    controls.appendChild(zoomOutBtn);
+    controls.appendChild(zoomResetBtn);
+    controls.appendChild(closeBtn);
+
+    head.appendChild(titleEl);
+    if (hasHtf && hasLtf) head.appendChild(tfSwitcher);
+    head.appendChild(controls);
+
+    const body = h("div", { class: "missed-lightbox-body" });
+    const img = h("img", { class: "missed-lightbox-img", alt: "Missed Trade Chart" });
+    body.appendChild(img);
+
+    let prevBtn = null;
+    let nextBtn = null;
+    if (hasHtf && hasLtf) {
+      prevBtn = h("button", { type: "button", class: "missed-lightbox-arrow prev", text: "‹", title: "Previous (Left Arrow)" });
+      nextBtn = h("button", { type: "button", class: "missed-lightbox-arrow next", text: "›", title: "Next (Right Arrow)" });
+      body.appendChild(prevBtn);
+      body.appendChild(nextBtn);
+    }
+
+    const hint = h("div", { class: "missed-lightbox-hint", text: "Esc to close · Left/Right arrows to switch HTF/LTF · Scroll to zoom · Drag to pan" });
+    body.appendChild(hint);
+
+    overlay.appendChild(head);
+    overlay.appendChild(body);
+    document.body.appendChild(overlay);
+
+    function updateTransform() {
+      img.style.transform = `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`;
+    }
+
+    function setImage() {
+      const src = currentTf === "HTF" ? trade.htfScreenshot : trade.ltfScreenshot;
+      img.src = src || "";
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+      updateTransform();
+      if (hasHtf && hasLtf) {
+        tfSwitcher.querySelectorAll(".missed-tf-btn").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.lbTf === currentTf);
+        });
+      }
+    }
+
+    function toggleTf() {
+      if (!hasHtf || !hasLtf) return;
+      currentTf = currentTf === "HTF" ? "LTF" : "HTF";
+      setImage();
+    }
+
+    if (tfSwitcher) {
+      tfSwitcher.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-lb-tf]");
+        if (btn && btn.dataset.lbTf !== currentTf) {
+          currentTf = btn.dataset.lbTf;
+          setImage();
+        }
+      });
+    }
+
+    if (prevBtn) prevBtn.addEventListener("click", toggleTf);
+    if (nextBtn) nextBtn.addEventListener("click", toggleTf);
+
+    zoomInBtn.addEventListener("click", () => {
+      zoom = Math.min(5, zoom + 0.3);
+      updateTransform();
+    });
+
+    zoomOutBtn.addEventListener("click", () => {
+      zoom = Math.max(0.5, zoom - 0.3);
+      updateTransform();
+    });
+
+    zoomResetBtn.addEventListener("click", () => {
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+      updateTransform();
+    });
+
+    body.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.2 : -0.2;
+      zoom = Math.max(0.5, Math.min(6, zoom + delta));
+      updateTransform();
+    }, { passive: false });
+
+    body.addEventListener("mousedown", (e) => {
+      if (e.target.closest("button")) return;
+      isDragging = true;
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+      body.classList.add("is-dragging");
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener("mouseup", () => {
+      isDragging = false;
+      body.classList.remove("is-dragging");
+    });
+
+    function closeLightbox() {
+      window.removeEventListener("keydown", onKey);
+      overlay.remove();
+    }
+
+    closeBtn.addEventListener("click", closeLightbox);
+
+    function onKey(e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeLightbox();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        toggleTf();
+      }
+    }
+
+    window.addEventListener("keydown", onKey);
+    setImage();
+  }
+
   function wireEvents() {
-    byId("btn-new-trade").addEventListener("click", () => openTradeForm(null));
+    byId("btn-new-trade").addEventListener("click", () => {
+      if (model && model.view === "missed") openMissedTradeModal(null);
+      else openTradeForm(null);
+    });
+    byId("btn-missed-trades").addEventListener("click", () => {
+      H.setView(model.view === "missed" ? "journal" : "missed");
+    });
+    byId("btn-back-to-journal").addEventListener("click", () => {
+      H.setView("journal");
+    });
+    byId("btn-empty-log-missed").addEventListener("click", () => {
+      openMissedTradeModal(null);
+    });
+
+    let missedSearchTimer = null;
+    byId("missed-search").addEventListener("input", (e) => {
+      clearTimeout(missedSearchTimer);
+      missedSearchTimer = setTimeout(() => {
+        H.setMissedFilters({ search: e.target.value });
+      }, 120);
+    });
+
+    byId("missed-filter-instrument").addEventListener("change", (e) => {
+      H.setMissedFilters({ instrument: e.target.value || null });
+    });
+    byId("missed-filter-session").addEventListener("change", (e) => {
+      H.setMissedFilters({ session: e.target.value || null });
+    });
+
+    byId("missed-reason-pills").addEventListener("click", async (e) => {
+      // 1. Delete reason
+      const delBtn = e.target.closest("[data-del-filter-reason]");
+      if (delBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const reasonToDel = delBtn.dataset.delFilterReason;
+        const ok = await confirm({
+          title: "Remove reason?",
+          message: `Remove "${reasonToDel}" from your reasons list? Existing missed trades using it will not be modified.`,
+          confirmLabel: "Remove",
+          danger: true,
+        });
+        if (ok) {
+          await H.deleteMissedReason(reasonToDel);
+          toast("Reason removed.", { type: "success" });
+        }
+        return;
+      }
+
+      // 2. Add reason button
+      const addBtn = e.target.closest("#btn-save-filter-reason");
+      if (addBtn) {
+        e.stopPropagation();
+        const input = byId("missed-filter-add-input");
+        const val = input ? input.value.trim() : "";
+        if (val) {
+          await H.saveMissedReason(val);
+          toast(`Added reason "${val}".`, { type: "success" });
+        }
+        return;
+      }
+
+      // 3. Select reason pill
+      const chip = e.target.closest("[data-reason]");
+      if (!chip) return;
+      H.setMissedFilters({ reason: chip.dataset.reason });
+    });
+
+    byId("missed-reason-pills").addEventListener("keydown", async (e) => {
+      if (e.target && e.target.id === "missed-filter-add-input" && e.key === "Enter") {
+        e.preventDefault();
+        const val = e.target.value.trim();
+        if (val) {
+          await H.saveMissedReason(val);
+          toast(`Added reason "${val}".`, { type: "success" });
+        }
+      }
+    });
+
+    byId("missed-grid").addEventListener("click", async (e) => {
+      const card = e.target.closest(".missed-card");
+      if (!card) return;
+      const tradeId = card.dataset.missedId;
+      const trade = (model.missedTrades || []).find((t) => String(t.id) === String(tradeId));
+      if (!trade) return;
+
+      const tfBtn = e.target.closest("[data-card-tf]");
+      if (tfBtn) {
+        e.stopPropagation();
+        const newTf = tfBtn.dataset.cardTf;
+        cardActiveTf.set(trade.id, newTf);
+        const img = card.querySelector(".missed-card-screen img");
+        const nextSrc = newTf === "HTF" ? trade.htfScreenshot : trade.ltfScreenshot;
+        if (img && nextSrc) img.src = nextSrc;
+        card.querySelectorAll(".missed-tf-btn").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.cardTf === newTf);
+        });
+        return;
+      }
+
+      const expandBtn = e.target.closest('[data-action="expand"]');
+      if (expandBtn) {
+        e.stopPropagation();
+        const p = card.querySelector(".missed-lesson-text");
+        if (p) {
+          const isClamped = p.classList.contains("clamp-3");
+          p.classList.toggle("clamp-3", !isClamped);
+          expandBtn.textContent = isClamped ? "less" : "more";
+        }
+        return;
+      }
+
+      const editBtn = e.target.closest('[data-action="edit"]');
+      if (editBtn) {
+        e.stopPropagation();
+        openMissedTradeModal(trade);
+        return;
+      }
+
+      const deleteBtn = e.target.closest('[data-action="delete"]');
+      if (deleteBtn) {
+        e.stopPropagation();
+        const ok = await confirm({
+          title: "Delete missed trade?",
+          message: `Missed setup on ${trade.instrument || "trade"} (${trade.date || "—"}) will be deleted.`,
+          confirmLabel: "Delete",
+          danger: true,
+        });
+        if (ok) {
+          await H.deleteMissedTrade(trade.id);
+          toast("Missed trade deleted.", { type: "success" });
+        }
+        return;
+      }
+
+      const screen = e.target.closest('[data-action="lightbox"]');
+      if (screen) {
+        const activeTf = cardActiveTf.get(trade.id) || "HTF";
+        openMissedLightbox(trade, activeTf);
+      }
+    });
     byId("btn-empty-new").addEventListener("click", () => openTradeForm(null));
     byId("btn-templates").addEventListener("click", openTemplatesModal);
     byId("btn-data").addEventListener("click", openDataModal);
@@ -3935,11 +4770,17 @@
       if (typing || modalStack.length) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        openTradeForm(null);
+        if (model && model.view === "missed") openMissedTradeModal(null);
+        else openTradeForm(null);
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
-        byId("search-input").focus();
-        byId("search-input").select();
+        if (model && model.view === "missed") {
+          const ms = byId("missed-search");
+          if (ms) { ms.focus(); ms.select(); }
+        } else {
+          byId("search-input").focus();
+          byId("search-input").select();
+        }
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
         event.preventDefault();
         Promise.resolve(H.exportJSON()).then(() => toast("Backup exported.", { type: "success" })).catch((err) => toast(err.message || "Export failed.", { type: "error" }));

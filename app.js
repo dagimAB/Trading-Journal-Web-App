@@ -26,17 +26,33 @@
     mfeAtLeast: null,
   };
 
+  const MISSED_FILTER_DEFAULTS = {
+    search: "",
+    instrument: null,
+    session: null,
+    reason: "All",
+  };
+
   let rawTrades = [];
+  let missedTrades = [];
+  let missedReasons = [];
   let screenshots = [];
   let settings = A.defaultSettings();
   let filters = Object.assign({}, FILTER_DEFAULTS);
+  let missedFilters = Object.assign({}, MISSED_FILTER_DEFAULTS);
   let sort = { key: "tradeNumber", dir: "asc" };
   let initialized = false;
 
   const state = {
+    view: "journal", // "journal" | "missed"
     allTrades: [],
     filteredTrades: [],
     tableTrades: [],
+    missedTrades: [],
+    filteredMissedTrades: [],
+    missedReasons: [],
+    missedStats: { total: 0, totalR: 0, avgR: 0, topReason: "—", topReasonCount: 0, reasonCounts: {} },
+    missedFilters,
     templates: [],
     settings,
     filters,
@@ -154,6 +170,37 @@
     return { due: days >= 30, days };
   }
 
+  function sanitizeMissedTrade(trade) {
+    return {
+      id: trade.id || genId("missed"),
+      date: trade.date || todayISO(),
+      instrument: trade.instrument || "",
+      session: trade.session || "",
+      direction: trade.direction || "Long",
+      potentialR: A.toNum(trade.potentialR) !== null ? A.toNum(trade.potentialR) : 0,
+      reason: trade.reason ? String(trade.reason).trim() : "Hesitation",
+      notes: trade.notes ? String(trade.notes).trim() : "",
+      htfScreenshot: trade.htfScreenshot || null,
+      ltfScreenshot: trade.ltfScreenshot || null,
+      createdAt: trade.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  function rebuildMissed() {
+    const filtered = A.filterMissedTrades(missedTrades, missedFilters);
+    filtered.sort((a, b) => {
+      const cmp = String(b.date || "").localeCompare(String(a.date || ""));
+      if (cmp !== 0) return cmp;
+      return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    });
+    const stats = A.computeMissedStats(missedTrades);
+    state.missedTrades = missedTrades;
+    state.filteredMissedTrades = filtered;
+    state.missedStats = stats;
+    state.missedFilters = missedFilters;
+  }
+
   function rebuild() {
     const decorated = decorateAll(rawTrades);
     const filtered = A.applyFilters(decorated, filters, settings);
@@ -175,6 +222,7 @@
     state.backupDays = backup.days;
     state.analyticsTab = settings.visibleAnalytics || state.analyticsTab || "session";
     if (!state.settings.columns) state.settings.columns = A.defaultSettings().columns;
+    rebuildMissed();
   }
 
   function render() {
@@ -202,6 +250,9 @@
       await DB.setSettings(settings);
     }
     rawTrades = trades;
+    missedTrades = DB.getMissedTrades ? DB.getMissedTrades() : [];
+    missedReasons = DB.getMissedReasons ? DB.getMissedReasons() : A.DEFAULT_MISSED_REASONS.slice();
+    state.missedReasons = missedReasons;
     state.templates = templates.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true }));
     screenshots = await DB.getAllScreenshots();
     rebuild();
@@ -391,6 +442,33 @@
       trade.id = genId("demo");
     });
     await DB.putTrades(demo);
+    if (!missedTrades.length) {
+      missedTrades = [
+        sanitizeMissedTrade({
+          id: genId("demo-missed"),
+          date: todayISO(),
+          instrument: "S&P500",
+          session: "London",
+          direction: "Long",
+          potentialR: 5.5,
+          reason: "Hesitation",
+          notes: "Clean liquidity sweep into 15M FVG during London open. Hesitated pulling the trigger due to prior loss. Must execute without second-guessing.",
+          isDemo: true,
+        }),
+        sanitizeMissedTrade({
+          id: genId("demo-missed"),
+          date: todayISO(),
+          instrument: "NAS100",
+          session: "New York AM",
+          direction: "Short",
+          potentialR: 7.2,
+          reason: "Missed Alert",
+          notes: "Alert triggered at key swing high during 9:50 AM silver bullet window. Was away from desk. Keep push notifications active on mobile.",
+          isDemo: true,
+        }),
+      ];
+      if (DB.saveMissedTrades) DB.saveMissedTrades(missedTrades);
+    }
     await load();
     render();
     return demo.length;
@@ -401,6 +479,8 @@
     const shotIds = screenshots.filter((s) => demoIds.includes(String(s.tradeId))).map((s) => s.id);
     if (shotIds.length) await DB.deleteScreenshots(shotIds);
     await DB.deleteDemoTrades();
+    missedTrades = missedTrades.filter((m) => !m.isDemo);
+    if (DB.saveMissedTrades) DB.saveMissedTrades(missedTrades);
     await load();
     render();
   }
@@ -492,6 +572,76 @@
     return updates.length;
   }
 
+  async function saveMissedTrade(draft) {
+    const next = sanitizeMissedTrade(draft);
+    const check = A.validateMissedTrade(next);
+    if (!check.valid) {
+      return { ok: false, errors: check.errors.map((e) => e.message) };
+    }
+    const idx = missedTrades.findIndex((m) => String(m.id) === String(next.id));
+    if (idx >= 0) {
+      missedTrades[idx] = next;
+    } else {
+      missedTrades.unshift(next);
+    }
+    if (DB.saveMissedTrades) DB.saveMissedTrades(missedTrades);
+    rebuildMissed();
+    render();
+    return { ok: true, trade: next };
+  }
+
+  async function deleteMissedTrade(id) {
+    const found = missedTrades.find((m) => String(m.id) === String(id));
+    missedTrades = missedTrades.filter((m) => String(m.id) !== String(id));
+    if (DB.saveMissedTrades) DB.saveMissedTrades(missedTrades);
+    rebuildMissed();
+    render();
+    return found || null;
+  }
+
+  function setMissedFilters(patch) {
+    missedFilters = Object.assign({}, missedFilters, patch || {});
+    rebuildMissed();
+    render();
+  }
+
+  function clearMissedFilters() {
+    missedFilters = Object.assign({}, MISSED_FILTER_DEFAULTS);
+    rebuildMissed();
+    render();
+  }
+
+  async function saveMissedReason(newReason) {
+    const trimmed = String(newReason || "").trim();
+    if (!trimmed) return { ok: false, error: "Reason cannot be empty." };
+    const exists = missedReasons.some((r) => r.toLowerCase() === trimmed.toLowerCase());
+    if (!exists) {
+      missedReasons.push(trimmed);
+      if (DB.saveMissedReasons) DB.saveMissedReasons(missedReasons);
+    }
+    state.missedReasons = missedReasons;
+    render();
+    return { ok: true, reason: trimmed };
+  }
+
+  async function deleteMissedReason(reasonToDelete) {
+    const target = String(reasonToDelete || "").trim().toLowerCase();
+    missedReasons = missedReasons.filter((r) => r.toLowerCase() !== target);
+    if (DB.saveMissedReasons) DB.saveMissedReasons(missedReasons);
+    state.missedReasons = missedReasons;
+    if (missedFilters.reason && missedFilters.reason.toLowerCase() === target) {
+      missedFilters.reason = "All";
+      rebuildMissed();
+    }
+    render();
+    return { ok: true };
+  }
+
+  function setView(view) {
+    state.view = view === "missed" ? "missed" : "journal";
+    render();
+  }
+
   const handlers = {
     reload: refresh,
     saveTrade,
@@ -499,6 +649,15 @@
     duplicateTrade,
     deleteTrade,
     restoreTrade,
+    saveMissedTrade,
+    deleteMissedTrade,
+    saveMissedReason,
+    deleteMissedReason,
+    getMissedReasons: () => missedReasons,
+    setMissedFilters,
+    clearMissedFilters,
+    setView,
+    getMissedTrades: () => missedTrades,
     saveTemplate,
     deleteTemplate,
     countTemplateUsage: (id) => DB.countTemplatesForTrade(id),
@@ -546,7 +705,7 @@
     clearAll,
     counts: async function () {
       const [trades, templates, shots] = await Promise.all([DB.countTrades(), DB.getAllTemplates(), DB.getAllScreenshots()]);
-      return { trades, templates: templates.length, screenshots: shots.length };
+      return { trades, templates: templates.length, screenshots: shots.length, missedTrades: missedTrades.length };
     },
     storageEstimate: () => DB.getStorageEstimate(),
   };

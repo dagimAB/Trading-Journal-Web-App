@@ -26,6 +26,7 @@
     </div>
 
     <div class="header-actions">
+      <button id="btn-missed-trades" class="btn btn-ghost" type="button" title="View Missed Trades">Missed Trades</button>
       <button id="btn-blind" class="btn btn-ghost" type="button" title="Blind backtest mode (B)">
         <span class="dot" aria-hidden="true"></span> Blind Backtest
       </button>
@@ -209,6 +210,69 @@
         <button type="button" class="tab" data-tab="sl-optimization" role="tab">SL Optimization</button>
       </div>
       <div id="analytics-body" class="analytics-body"></div>
+    </section>
+
+    <section class="missed-trades-section" id="missed-trades-section" aria-label="Missed Trades" hidden>
+      <div class="missed-head">
+        <div class="missed-title-wrap">
+          <div class="missed-title-row">
+            <h2>Missed Trades</h2>
+            <button id="btn-back-to-journal" class="btn btn-ghost btn-small" type="button" title="Back to Journal">
+              &larr; Back to Journal
+            </button>
+          </div>
+          <p class="muted">Reflections on missed setups, hesitation, and psychology &middot; Large visual review</p>
+        </div>
+      </div>
+
+      <!-- Summary Bar -->
+      <div class="missed-summary-bar">
+        <div class="dash-card">
+          <div class="dash-card-label">Total Missed Trades</div>
+          <div class="dash-card-value" id="missed-stat-count">0</div>
+          <div class="dash-card-sub">Recorded setups</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-label">Total Missed R</div>
+          <div class="dash-card-value pos" id="missed-stat-r">+0.0R</div>
+          <div class="dash-card-sub">Theoretical R left on table</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-label">Top Missed Reason</div>
+          <div class="dash-card-value" id="missed-stat-reason">—</div>
+          <div class="dash-card-sub" id="missed-stat-reason-sub">Most frequent reflection</div>
+        </div>
+      </div>
+
+      <!-- Filter Bar -->
+      <div class="missed-filter-bar">
+        <div class="filter-controls">
+          <div class="filter-search-wrap">
+            <span class="search-icon" aria-hidden="true">🔍</span>
+            <input type="search" id="missed-search" class="filter-search" placeholder="Search missed trades... (Ctrl+F)" aria-label="Search missed trades" />
+          </div>
+          <select id="missed-filter-instrument" aria-label="Filter by instrument">
+            <option value="">All instruments</option>
+          </select>
+          <select id="missed-filter-session" aria-label="Filter by session">
+            <option value="">All sessions</option>
+          </select>
+        </div>
+        <div class="missed-reason-pills" id="missed-reason-pills" role="group" aria-label="Filter by missed reason">
+          <!-- Pills will be rendered here dynamically -->
+        </div>
+      </div>
+
+      <!-- 2-Column Gallery Grid -->
+      <div id="missed-grid" class="missed-grid"></div>
+
+      <!-- Empty state container -->
+      <div id="missed-empty" class="missed-empty" hidden>
+        <div class="empty-icon">📷</div>
+        <h3>No Missed Trades Found</h3>
+        <p class="muted" id="missed-empty-sub">No missed trades recorded yet or matching your active filters.</p>
+        <button id="btn-empty-log-missed" class="btn btn-primary" type="button">+ Log Missed Trade</button>
+      </div>
     </section>
   </main>
 

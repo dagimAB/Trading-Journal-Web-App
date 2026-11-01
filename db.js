@@ -252,7 +252,62 @@
       templates,
       settings: rowsToObject(settingsRows),
       screenshots,
+      missedTrades: getMissedTrades(),
+      missedReasons: getMissedReasons(),
     };
+  }
+
+  const MISSED_STORAGE_KEY = "ict_missed_trades";
+  const MISSED_REASONS_KEY = "ict_missed_reasons";
+  const DEFAULT_MISSED_REASONS = [
+    "Hesitation",
+    "Fear of Loss",
+    "Missed Alert",
+    "HTF Doubt",
+    "Away from Desk",
+    "News/Spread",
+  ];
+
+  function getMissedReasons() {
+    try {
+      if (typeof localStorage === "undefined") return DEFAULT_MISSED_REASONS.slice();
+      const raw = localStorage.getItem(MISSED_REASONS_KEY);
+      if (!raw) return DEFAULT_MISSED_REASONS.slice();
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_MISSED_REASONS.slice();
+    } catch (_) {
+      return DEFAULT_MISSED_REASONS.slice();
+    }
+  }
+
+  function saveMissedReasons(reasons) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(MISSED_REASONS_KEY, JSON.stringify(Array.isArray(reasons) ? reasons : []));
+    } catch (e) {
+      console.warn("Could not persist missed reasons to localStorage:", e);
+    }
+  }
+
+  function getMissedTrades() {
+    try {
+      if (typeof localStorage === "undefined") return [];
+      const raw = localStorage.getItem(MISSED_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveMissedTrades(trades) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(MISSED_STORAGE_KEY, JSON.stringify(Array.isArray(trades) ? trades : []));
+    } catch (e) {
+      console.warn("Could not persist missed trades to localStorage:", e);
+    }
   }
 
   async function replaceAll(payload) {
@@ -272,10 +327,18 @@
     );
     (payload.screenshots || []).forEach((s) => tx.objectStore(STORES.screenshots).put(s));
     await transactionDone(tx);
+    if (payload.missedTrades && Array.isArray(payload.missedTrades)) {
+      saveMissedTrades(payload.missedTrades);
+    }
+    if (payload.missedReasons && Array.isArray(payload.missedReasons)) {
+      saveMissedReasons(payload.missedReasons);
+    }
     return {
       trades: (payload.trades || []).length,
       templates: (payload.templates || []).length,
       screenshots: (payload.screenshots || []).length,
+      missedTrades: (payload.missedTrades || []).length,
+      missedReasons: (payload.missedReasons || []).length,
     };
   }
 
@@ -336,6 +399,34 @@
     });
 
     await transactionDone(tx);
+
+    let addedMissed = 0;
+    let updatedMissed = 0;
+    if (payload.missedTrades && Array.isArray(payload.missedTrades)) {
+      const existingMissed = getMissedTrades();
+      const existingIds = new Set(existingMissed.map((m) => String(m.id)));
+      for (const m of payload.missedTrades) {
+        const exists = existingIds.has(String(m.id));
+        if (exists && !opts.updateExisting) continue;
+        if (exists) {
+          const idx = existingMissed.findIndex((item) => String(item.id) === String(m.id));
+          if (idx >= 0) existingMissed[idx] = m;
+          updatedMissed += 1;
+        } else {
+          existingMissed.push(m);
+          existingIds.add(String(m.id));
+          addedMissed += 1;
+        }
+      }
+      saveMissedTrades(existingMissed);
+    }
+
+    if (payload.missedReasons && Array.isArray(payload.missedReasons)) {
+      const currentReasons = getMissedReasons();
+      const mergedReasons = Array.from(new Set([...currentReasons, ...payload.missedReasons]));
+      saveMissedReasons(mergedReasons);
+    }
+
     return {
       addedTrades,
       updatedTrades,
@@ -344,6 +435,8 @@
       updatedTemplates,
       skippedTemplates,
       screenshots: (payload.screenshots || []).length,
+      missedTrades: (payload.missedTrades || []).length,
+      missedReasons: (payload.missedReasons || []).length,
     };
   }
 
@@ -416,5 +509,9 @@
     clearTradesOnly,
     clearTradeData,
     getStorageEstimate,
+    getMissedTrades,
+    saveMissedTrades,
+    getMissedReasons,
+    saveMissedReasons,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

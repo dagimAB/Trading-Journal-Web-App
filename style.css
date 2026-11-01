@@ -3527,3 +3527,689 @@ body.panels-hidden #analytics {
   color: var(--text-dim);
   line-height: 1.5;
 }
+
+/* ==========================================================================
+   MISSED TRADES VIEW & COMPONENTS
+   ========================================================================== */
+
+#btn-missed-trades.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  font-weight: 600;
+}
+
+.missed-trades-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  animation: fadeIn 0.15s ease;
+}
+
+.missed-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 0 var(--space-2) 0;
+}
+
+.missed-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.missed-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.missed-title-row h2 {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Summary Bar */
+.missed-summary-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .missed-summary-bar {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Filter Bar */
+.missed-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}
+
+.missed-filter-bar .filter-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.missed-filter-bar .filter-search-wrap {
+  flex: 1;
+  min-width: 220px;
+}
+
+.missed-filter-bar select {
+  min-width: 150px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: var(--fs-xs);
+}
+
+.missed-reason-pills {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* 2-Column Gallery Grid */
+.missed-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+  align-items: stretch;
+}
+
+@media (max-width: 960px) {
+  .missed-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Card */
+.missed-card {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+}
+
+.missed-card:hover {
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+
+/* Screenshot Frame (16:9, large hero) */
+.missed-card-screen {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 320px;
+  background: var(--panel-2);
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.missed-card-screen img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.missed-card-screen:hover img {
+  transform: scale(1.015);
+}
+
+.missed-no-shot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  padding: var(--space-5);
+  text-align: center;
+}
+
+.missed-no-shot-icon {
+  font-size: 32px;
+  opacity: 0.6;
+}
+
+/* Sleek Floating Pill Toggle in top-right */
+.missed-tf-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 3px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-full);
+  padding: 3px;
+}
+
+[data-theme="light"] .missed-tf-toggle {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--border);
+}
+
+.missed-tf-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.missed-tf-btn:hover {
+  color: var(--text);
+}
+
+.missed-tf-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.missed-tf-single {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.04em;
+}
+
+[data-theme="light"] .missed-tf-single {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--border);
+}
+
+/* Card Footer (Strictly 2 rows) */
+.missed-card-footer {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel);
+}
+
+/* Row 1: Setup Badges */
+.missed-footer-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.missed-badges-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.missed-potential-r {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+}
+
+/* Row 2: Why & Lesson + subtle hover actions */
+.missed-footer-row2 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.missed-lesson-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.missed-reason-badge {
+  flex-shrink: 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.missed-lesson-text {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  margin: 0;
+  flex: 1;
+  word-break: break-word;
+}
+
+.missed-lesson-text.clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.missed-expand-btn {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.missed-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+}
+
+.missed-card:hover .missed-card-actions {
+  opacity: 1;
+}
+
+/* Empty State */
+.missed-empty {
+  padding: 60px var(--space-5);
+  text-align: center;
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+
+.missed-empty .empty-icon {
+  font-size: 42px;
+  opacity: 0.7;
+}
+
+.missed-empty h3 {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+
+.missed-empty p {
+  margin: 0;
+  max-width: 440px;
+}
+
+/* Modal Dropzones for HTF & LTF */
+.missed-dropzone-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 600px) {
+  .missed-dropzone-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.missed-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 190px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+  overflow: hidden;
+}
+
+.missed-dropzone:hover,
+.missed-dropzone.drag-over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel-2));
+}
+
+.missed-dropzone-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--panel-2);
+}
+
+.missed-dropzone-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border);
+  color: #ffffff;
+  border-radius: var(--radius-full);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.missed-dropzone-remove:hover {
+  background: var(--neg);
+  border-color: var(--neg);
+}
+
+.missed-dropzone-slot-label {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.missed-dropzone-prompt {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.missed-dropzone-prompt b {
+  color: var(--text);
+}
+
+.missed-dropzone-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--muted);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Reason Picker Pills in Modal */
+.missed-tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.missed-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text-dim);
+  border-radius: 99px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.missed-tag-pill:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+.missed-tag-pill.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  font-weight: 600;
+}
+
+.missed-tag-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.6;
+  margin-left: 2px;
+  transition: all 0.15s ease;
+}
+
+.missed-tag-del:hover {
+  opacity: 1;
+  background: var(--neg-soft);
+  color: var(--neg);
+}
+
+.chip-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 5px;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: all 0.15s ease;
+}
+
+.chip-del:hover {
+  opacity: 1;
+  background: var(--neg-soft);
+  color: var(--neg);
+}
+
+.missed-inline-add-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.missed-mini-input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: var(--fs-xs);
+  min-width: 140px;
+  max-width: 180px;
+}
+
+.missed-mini-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* Lightbox for Missed Trades */
+.missed-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.94);
+  backdrop-filter: blur(8px);
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.15s ease;
+}
+
+.missed-lightbox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  z-index: 10;
+}
+
+.missed-lightbox-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.missed-lightbox-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.missed-lightbox-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.missed-lightbox-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.missed-lightbox-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  cursor: grab;
+}
+
+.missed-lightbox-body.is-dragging {
+  cursor: grabbing;
+}
+
+.missed-lightbox-img {
+  max-width: 95vw;
+  max-height: 85vh;
+  object-fit: contain;
+  transition: transform 0.1s ease-out;
+  transform-origin: center center;
+}
+
+.missed-lightbox-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.missed-lightbox-arrow:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.missed-lightbox-arrow.prev {
+  left: 20px;
+}
+
+.missed-lightbox-arrow.next {
+  right: 20px;
+}
+
+.missed-lightbox-hint {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 99px;
+  padding: 5px 16px;
+  font-size: 11.5px;
+  color: var(--muted);
+  pointer-events: none;
+}

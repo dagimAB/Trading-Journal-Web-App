@@ -578,6 +578,77 @@ test("compareFullTargetVsPartials calculates theoretical Full Runner R vs Realiz
   assert.strictEqual(res.rows.length, 2);
 });
 
+test("missed trades validation and statistics", () => {
+  const valid = A.validateMissedTrade({
+    date: "2026-11-01",
+    instrument: "S&P500",
+    session: "London",
+    direction: "Long",
+    potentialR: 5.5,
+    reason: "Hesitation",
+    notes: "Saw clean FVG sweep but hesitated",
+  });
+  assert.strictEqual(valid.valid, true);
+
+  const invalid = A.validateMissedTrade({
+    date: "",
+    instrument: "",
+    session: "",
+    direction: "InvalidDir",
+    potentialR: -2,
+    reason: "",
+  });
+  assert.strictEqual(invalid.valid, false);
+  assert.ok(invalid.errors.length >= 5);
+
+  const sampleMissed = [
+    { id: "m1", date: "2026-11-01", instrument: "S&P500", session: "London", direction: "Long", potentialR: 5.5, reason: "Hesitation", notes: "Entry model formed during London open" },
+    { id: "m2", date: "2026-11-02", instrument: "NAS100", session: "New York AM", direction: "Short", potentialR: 6.0, reason: "Hesitation", notes: "Waited too long for retracement" },
+    { id: "m3", date: "2026-11-03", instrument: "EURUSD", session: "London", direction: "Long", potentialR: 3.5, reason: "Missed Alert", notes: "Alert fired while away from desk" },
+  ];
+
+  const stats = A.computeMissedStats(sampleMissed);
+  assert.strictEqual(stats.total, 3);
+  assert.strictEqual(stats.totalR, 15.0);
+  assert.strictEqual(stats.avgR, 5.0);
+  assert.strictEqual(stats.topReason, "Hesitation");
+  assert.strictEqual(stats.topReasonCount, 2);
+
+  // Filters
+  const filteredSearch = A.filterMissedTrades(sampleMissed, { search: "retracement" });
+  assert.strictEqual(filteredSearch.length, 1);
+  assert.strictEqual(filteredSearch[0].id, "m2");
+
+  const filteredReason = A.filterMissedTrades(sampleMissed, { reason: "Missed Alert" });
+  assert.strictEqual(filteredReason.length, 1);
+  assert.strictEqual(filteredReason[0].id, "m3");
+
+  const filteredInstrument = A.filterMissedTrades(sampleMissed, { instrument: "S&P500" });
+  assert.strictEqual(filteredInstrument.length, 1);
+
+  const filteredSession = A.filterMissedTrades(sampleMissed, { session: "London" });
+  assert.strictEqual(filteredSession.length, 2);
+
+  const filteredAll = A.filterMissedTrades(sampleMissed, { reason: "All" });
+  assert.strictEqual(filteredAll.length, 3);
+});
+
+test("dynamic missed reasons array manipulation and backup", () => {
+  const reasons = A.DEFAULT_MISSED_REASONS.slice();
+  assert.ok(reasons.includes("Hesitation"));
+  assert.ok(reasons.includes("News/Spread"));
+
+  // Add custom reason
+  const custom = "Overleveraged Fear";
+  if (!reasons.includes(custom)) reasons.push(custom);
+  assert.strictEqual(reasons.includes(custom), true);
+
+  // Delete a reason
+  const updated = reasons.filter((r) => r !== "Hesitation");
+  assert.strictEqual(updated.includes("Hesitation"), false);
+  assert.strictEqual(updated.includes(custom), true);
+});
+
 test("performance: 5,000 trades compute under 2000ms", () => {
   const trades = A.generateDemoTrades(5000, { seed: 99 });
   const started = Date.now();

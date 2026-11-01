@@ -1682,6 +1682,92 @@
     return trades;
   }
 
+  const DEFAULT_MISSED_REASONS = [
+    "Hesitation",
+    "Fear of Loss",
+    "Missed Alert",
+    "HTF Doubt",
+    "Away from Desk",
+    "News/Spread",
+  ];
+
+  function validateMissedTrade(trade) {
+    const errors = [];
+    if (!trade) return { valid: false, errors: [{ field: "trade", message: "Trade is required." }] };
+    if (!trade.date) errors.push({ field: "date", message: "Date is required." });
+    if (!trade.instrument) errors.push({ field: "instrument", message: "Instrument is required." });
+    if (!trade.session) errors.push({ field: "session", message: "Session is required." });
+    if (!trade.direction || (trade.direction !== "Long" && trade.direction !== "Short")) {
+      errors.push({ field: "direction", message: "Direction must be Long or Short." });
+    }
+    const potR = toNum(trade.potentialR);
+    if (potR === null || !Number.isFinite(potR) || potR < 0) {
+      errors.push({ field: "potentialR", message: "Potential R must be a positive number." });
+    }
+    if (!trade.reason || !String(trade.reason).trim()) {
+      errors.push({ field: "reason", message: "Missed Reason is required." });
+    }
+    return { valid: errors.length === 0, errors };
+  }
+
+  function computeMissedStats(missedTrades) {
+    const list = Array.isArray(missedTrades) ? missedTrades : [];
+    const total = list.length;
+    let totalR = 0;
+    const reasonCounts = {};
+    for (const t of list) {
+      const r = toNum(t.potentialR) || 0;
+      totalR += r;
+      const reason = (t.reason && String(t.reason).trim()) || "Unspecified";
+      reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+    }
+    totalR = Math.round(totalR * 100) / 100;
+    const avgR = total > 0 ? Math.round((totalR / total) * 100) / 100 : 0;
+    let topReason = "—";
+    let topReasonCount = 0;
+    for (const [reason, count] of Object.entries(reasonCounts)) {
+      if (count > topReasonCount) {
+        topReason = reason;
+        topReasonCount = count;
+      }
+    }
+    return {
+      total,
+      totalR,
+      avgR,
+      topReason,
+      topReasonCount,
+      reasonCounts,
+    };
+  }
+
+  function filterMissedTrades(missedTrades, filters) {
+    const list = Array.isArray(missedTrades) ? missedTrades : [];
+    if (!filters) return list.slice();
+    const search = String(filters.search || "").trim().toLowerCase();
+    const inst = filters.instrument;
+    const sess = filters.session;
+    const reason = filters.reason && filters.reason !== "All" ? filters.reason : null;
+
+    return list.filter((t) => {
+      if (inst && t.instrument !== inst) return false;
+      if (sess && t.session !== sess) return false;
+      if (reason && t.reason !== reason) return false;
+      if (search) {
+        const text = [
+          t.instrument || "",
+          t.session || "",
+          t.direction || "",
+          t.reason || "",
+          t.notes || "",
+          t.date || "",
+        ].join(" ").toLowerCase();
+        if (!text.includes(search)) return false;
+      }
+      return true;
+    });
+  }
+
   return {
     DAY_NAMES,
     DEFAULTS,
@@ -1759,5 +1845,9 @@
     demoPlanPool,
     generateDemoTrades,
     rangeLabels,
+    DEFAULT_MISSED_REASONS,
+    validateMissedTrade,
+    computeMissedStats,
+    filterMissedTrades,
   };
 });
