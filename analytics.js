@@ -1118,22 +1118,34 @@
 
     winningTrades.forEach((t) => {
       const realizedR = clampNumber(finalR(t), 2);
-      const risk = riskFactor(t);
       const levels = normalizeLevels(t.exitPlan);
 
-      const candidates = [];
-      levels.forEach((l) => {
-        const tr = toNum(l.targetR);
-        if (tr !== null && tr > 0) candidates.push(tr);
-      });
+      // Source of truth: REM. EXIT R (fallback to final level target of Exit Plan)
+      let targetR = null;
+      const explicitRem = toNum(t.remainderExitR);
+      if (explicitRem !== null) {
+        targetR = explicitRem;
+      } else {
+        if (levels.length > 0) {
+          const lastLvl = levels[levels.length - 1];
+          if (lastLvl && lastLvl.targetR !== null && lastLvl.targetR !== undefined && lastLvl.targetR > 0) {
+            targetR = lastLvl.targetR;
+          }
+        }
+        if (targetR === null && typeof t.exitPlan === "string") {
+          const matches = Array.from(t.exitPlan.matchAll(/@\s*([0-9.]+)\s*R?/gi));
+          if (matches.length > 0) {
+            const parsed = parseFloat(matches[matches.length - 1][1]);
+            if (Number.isFinite(parsed) && parsed > 0) targetR = parsed;
+          }
+        }
+      }
 
-      const wR = parseRrVal(t.wickRr);
-      if (wR !== null && wR > 0) candidates.push(wR);
-      const bR = parseRrVal(t.bodyRr);
-      if (bR !== null && bR > 0) candidates.push(bR);
+      if (targetR === null) {
+        targetR = realizedR;
+      }
 
-      let maxTargetR = candidates.length ? Math.max(...candidates) : null;
-      let potentialR = maxTargetR !== null ? clampNumber(maxTargetR * risk, 2) : realizedR;
+      let potentialR = clampNumber(targetR, 2);
       if (potentialR < realizedR) potentialR = realizedR;
 
       const varianceR = clampNumber(potentialR - realizedR, 2);
@@ -1144,7 +1156,7 @@
       rows.push({
         trade: t,
         planLabel: planString(levels) || "100% @ 1R",
-        maxTargetR: maxTargetR !== null ? maxTargetR : realizedR,
+        maxTargetR: potentialR,
         realizedR,
         potentialR,
         varianceR,

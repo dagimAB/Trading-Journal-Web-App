@@ -578,6 +578,25 @@ test("compareFullTargetVsPartials calculates theoretical Full Runner R vs Realiz
   assert.strictEqual(res.rows.length, 2);
 });
 
+test("compareFullTargetVsPartials uses REM. EXIT R and ignores Body SL / Wick SL", () => {
+  const sixTrades = [
+    baseTrade({ tradeNumber: 1, remainderExitR: 7.9, finalROverride: 5.2, bodyRr: 39.99, wickRr: "1:25R" }),
+    baseTrade({ tradeNumber: 2, exitReason: "SL", finalROverride: -1, remainderExitR: -1 }),
+    baseTrade({ tradeNumber: 3, exitReason: "SL", finalROverride: -1, remainderExitR: -1 }),
+    baseTrade({ tradeNumber: 4, remainderExitR: 8.1, finalROverride: 6.0, bodyRr: 35.0, wickRr: "1:20R" }),
+    baseTrade({ tradeNumber: 5, remainderExitR: 8.51, finalROverride: 7.11, bodyRr: 39.99 }),
+    baseTrade({ tradeNumber: 6, remainderExitR: 7.15, finalROverride: 5.15, wickRr: 30.0 }),
+  ];
+
+  const res = A.compareFullTargetVsPartials(sixTrades);
+  assert.strictEqual(res.winCount, 4);
+  assert.strictEqual(res.totalPotentialR, 31.66); // 7.9 + 8.1 + 8.51 + 7.15 = 31.66
+  assert.strictEqual(res.totalRealizedR, 23.46); // 5.2 + 6.0 + 7.11 + 5.15 = 23.46
+  assert.strictEqual(res.allNetRealizedR, 21.46); // 23.46 - 2 = 21.46
+  assert.strictEqual(res.allNetPotentialR, 29.66); // 31.66 - 2 = 29.66
+  assert.strictEqual(res.varianceR, 8.2); // 31.66 - 23.46 = 8.20
+});
+
 test("missed trades validation and statistics", () => {
   const valid = A.validateMissedTrade({
     date: "2026-11-01",

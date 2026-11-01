@@ -1048,12 +1048,12 @@
             <div class="dash-card">
               <div class="dash-card-label">Total Realized R (With Partials)</div>
               <div class="dash-card-value ${signedClass(rvp.totalRealizedR)}">${fmtSigned(rvp.totalRealizedR)}</div>
-              <div class="dash-card-sub">Actual exits across ${rvp.winCount} winning trade${rvp.winCount === 1 ? '' : 's'}</div>
+              <div class="dash-card-sub">Net ${fmtSigned(rvp.allNetRealizedR)} across ${rvp.totalCompleted} trade${rvp.totalCompleted === 1 ? '' : 's'} (${rvp.winCount} win${rvp.winCount === 1 ? '' : 's'})</div>
             </div>
             <div class="dash-card">
-              <div class="dash-card-label">Total Potential R (Without Partials / Full Runner)</div>
+              <div class="dash-card-label">Total Potential R (Without Partials / Full Target)</div>
               <div class="dash-card-value ${signedClass(rvp.totalPotentialR)}">${fmtSigned(rvp.totalPotentialR)}</div>
-              <div class="dash-card-sub">100% position to final target (avg +${A.formatNumber(rvp.avgPotentialR, 2)}R)</div>
+              <div class="dash-card-sub">Net ${fmtSigned(rvp.allNetPotentialR)} without partials (avg +${A.formatNumber(rvp.avgPotentialR, 2)}R)</div>
             </div>
             <div class="dash-card">
               <div class="dash-card-label">Variance / Opportunity Cost</div>
@@ -1072,9 +1072,9 @@
               <tr>
                 <th>Trade</th>
                 <th>Exit Plan</th>
-                <th class="num">Final Target / Max R</th>
+                <th class="num">Full Target (Rem. Exit R)</th>
                 <th class="num">Realized R (Partials)</th>
-                <th class="num">Potential R (Full Runner)</th>
+                <th class="num">Potential R (Full Target)</th>
                 <th class="num">Variance (Δ R)</th>
                 <th>Strategy Edge</th>
               </tr>
