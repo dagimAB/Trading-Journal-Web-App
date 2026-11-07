@@ -689,10 +689,14 @@
   function renderFooter() {
     const completed = model.allTrades.filter((t) => A.finalR(t) !== null).length;
     const demo = model.allTrades.filter((t) => t.isDemo).length;
-    byId("footer-status").textContent = `${model.allTrades.length} trades · ${completed} completed${demo ? ` · ${demo} demo` : ""}${
-      model.settings.lastExportDate ? ` · last backup ${String(model.settings.lastExportDate).slice(0, 10)}` : " · no backup yet"
-    }`;
-    byId("footer-version").textContent = "v1.0";
+    const statusEl = byId("footer-status");
+    if (statusEl) {
+      statusEl.textContent = `${model.allTrades.length} trade${model.allTrades.length === 1 ? "" : "s"} · ${completed} completed${demo ? ` · ${demo} demo` : ""}`;
+    }
+    const versionEl = byId("footer-version");
+    if (versionEl) {
+      versionEl.textContent = "v1.0";
+    }
   }
 
   function closePopover() {
@@ -3274,16 +3278,6 @@
         <div class="decimals-grid">${decimals}</div>
       </div>
       <div class="form-section">
-        <h3>Screenshots (ImgBB)</h3>
-        <div class="form-grid">
-          <div class="field span-4">
-            <label>ImgBB API Key</label>
-            <input type="password" name="imgbbApiKey" value="${esc(s.imgbbApiKey || window.ICT_CONFIG?.IMGBB_API_KEY || "")}" placeholder="Paste your ImgBB API key">
-            <span class="hint">Used for automatic screenshot uploads (HTF & LTF charts).</span>
-          </div>
-        </div>
-      </div>
-      <div class="form-section">
         <h3>Strategy rules</h3>
         <div class="field"><textarea name="strategyRules" rows="4" placeholder="Your entry checklist, risk rules, invalidation criteria…">${esc(s.strategyRules || "")}</textarea></div>
       </div>`;
@@ -3351,7 +3345,7 @@
     footer.appendChild(saveBtn);
     const entry = openModal({
       title: "Settings",
-      subtitle: "Stored locally in this browser.",
+      subtitle: "Configure preferences, thresholds, and trading display.",
       size: "modal-md",
       body: form,
       footer,
@@ -3390,14 +3384,9 @@
         customSetups: tagState.customSetups.slice(),
         customSessions: tagState.customSessions.slice(),
         instrumentDecimals,
-        imgbbApiKey: get("imgbbApiKey") ? get("imgbbApiKey").value.trim() : (s.imgbbApiKey || ""),
+        imgbbApiKey: s.imgbbApiKey || window.ICT_CONFIG?.IMGBB_API_KEY || "",
         strategyRules: get("strategyRules").value,
       });
-
-      const imgbbApiKey = get("imgbbApiKey") ? get("imgbbApiKey").value.trim() : "";
-      if (window.ICT_CONFIG && imgbbApiKey) {
-        window.ICT_CONFIG.update({ IMGBB_API_KEY: imgbbApiKey });
-      }
 
       saveBtn.disabled = true;
       try {
@@ -4824,12 +4813,11 @@
     const email = user?.email || "Guest Trader";
     const memberSince = user?.created_at
       ? new Date(user.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
-      : "Local Session";
-    const uid = user?.id || "local-session";
+      : "Active Account";
     const totalTrades = (model.allTrades || []).length;
     const missedTrades = (model.missedTrades || []).length;
     const exitPlansCount = (model.templates || []).length;
-    const isCloud = !!(user && window.ICT_DB && window.ICT_DB.isSupabaseActive && window.ICT_DB.isSupabaseActive());
+    const hasLocalMigration = Boolean(model && model.migrationAvailable && model.migrationAvailable.hasData);
 
     const initials = (fullName || email || "T")
       .split(" ")
@@ -4843,7 +4831,7 @@
       <div class="profile-card">
         <div class="profile-card-header">
           <h3><span>👤</span> Identity & Account</h3>
-          <span class="pill pill-soft ${isCloud ? "pill-accent" : ""}">${isCloud ? "Cloud Synced" : "Local Storage"}</span>
+          <span class="pill pill-soft pill-accent">Cloud Synced</span>
         </div>
         <div class="profile-user-hero">
           <div class="profile-large-avatar">${esc(initials)}</div>
@@ -4851,7 +4839,7 @@
             <div class="profile-hero-name">${esc(fullName || email)}</div>
             <div class="profile-hero-role">
               <span class="pulse-dot"></span>
-              <span>${isCloud ? "Pro Trader · Supabase PostgreSQL" : "Local Workspace Mode"}</span>
+              <span>Active Trader Account</span>
             </div>
           </div>
         </div>
@@ -4865,13 +4853,6 @@
             <div style="display: flex; gap: var(--space-2); align-items: center;">
               <input type="email" id="profile-email" value="${esc(email)}" readonly style="opacity: 0.85; flex: 1;">
               ${user ? '<span class="pill pill-soft pill-accent" style="white-space: nowrap;">✓ Verified</span>' : ""}
-            </div>
-          </div>
-          <div class="field">
-            <label>User ID</label>
-            <div style="display: flex; gap: var(--space-2); align-items: center;">
-              <input type="text" id="profile-user-id" value="${esc(uid)}" readonly style="opacity: 0.75; font-family: monospace; font-size: 11px; flex: 1;">
-              <button type="button" class="btn btn-ghost btn-small" id="profile-copy-uid" title="Copy User ID">Copy</button>
             </div>
           </div>
           <div class="field">
@@ -4909,16 +4890,13 @@
         </div>
       </div>
 
-      <!-- Card 3: Cloud Database & Synchronization -->
+      <!-- Card 3: Account Overview & Data -->
       <div class="profile-card">
         <div class="profile-card-header">
-          <h3><span>☁️</span> Cloud Database & Sync</h3>
-          <span class="muted" style="font-size: var(--fs-xs); display: flex; align-items: center; gap: 6px;">
-            <span class="pulse-dot"></span> PostgreSQL Active
-          </span>
+          <h3><span>📊</span> Account Overview & Data</h3>
         </div>
         <p class="muted" style="font-size: var(--fs-xs); margin: 0;">
-          All trades, exit plans, and missed setups are securely synced to your cloud account with Row-Level Security.
+          Summary of your recorded trades, missed trade studies, and active exit plans.
         </p>
         <div class="profile-stat-pills">
           <div class="profile-stat-box">
@@ -4935,8 +4913,8 @@
           </div>
         </div>
         <div style="display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2);">
-          <button type="button" class="btn btn-secondary btn-small" id="profile-btn-export">Export Cloud Backup (JSON)</button>
-          <button type="button" class="btn btn-ghost btn-small" id="profile-btn-migrate">Migrate Local Storage Data</button>
+          <button type="button" class="btn btn-secondary btn-small" id="profile-btn-export">Export Backup (JSON)</button>
+          ${hasLocalMigration ? '<button type="button" class="btn btn-ghost btn-small" id="profile-btn-migrate">Migrate Local Storage Data</button>' : ""}
         </div>
       </div>
 
@@ -4957,13 +4935,12 @@
           </div>
           <div style="display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-1);">
             <button type="button" class="btn btn-secondary btn-small" id="profile-btn-update-pwd">Update Password</button>
-            <button type="button" class="btn btn-ghost btn-small" id="profile-btn-signout">Log Out</button>
           </div>
         </div>
         ` : `
         <div style="display: flex; flex-direction: column; gap: var(--space-3);">
           <p class="muted" style="font-size: var(--fs-sm); margin: 0;">
-            You are currently working in offline browser storage. Sign in or register to enable real-time cloud synchronization.
+            Sign in or register to enable real-time cloud synchronization across devices.
           </p>
           <div style="display: flex; gap: var(--space-2);">
             <button type="button" class="btn btn-primary btn-small" id="profile-btn-signin">Sign In</button>
@@ -4994,15 +4971,7 @@
       ` : ""}
     `;
 
-    // Copy UID button
-    byId("profile-copy-uid")?.addEventListener("click", () => {
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(uid);
-        toast("User ID copied to clipboard.", { type: "info" });
-      }
-    });
-
-    // Cloud Export
+    // Export Backup JSON
     byId("profile-btn-export")?.addEventListener("click", async () => {
       try {
         await H.exportJSON();
@@ -5012,7 +4981,7 @@
       }
     });
 
-    // Local Migration
+    // Local Migration (if unmigrated data exists)
     byId("profile-btn-migrate")?.addEventListener("click", async () => {
       try {
         const res = await H.migrateData();
@@ -5042,12 +5011,6 @@
       } catch (err) {
         toast(err?.message || "Password update failed.", { type: "error" });
       }
-    });
-
-    // Log out from profile
-    byId("profile-btn-signout")?.addEventListener("click", async () => {
-      await H.authSignOut();
-      toast("Logged out successfully.", { type: "info" });
     });
 
     // Delete account
@@ -5284,7 +5247,7 @@
     });
     byId("btn-templates").addEventListener("click", openTemplatesModal);
     byId("btn-data").addEventListener("click", openDataModal);
-    byId("btn-footer-demo").addEventListener("click", openDataModal);
+    byId("btn-footer-demo")?.addEventListener("click", openDataModal);
     byId("btn-settings").addEventListener("click", openSettingsModal);
     byId("btn-edit-thresholds").addEventListener("click", openSettingsModal);
     byId("btn-blind").addEventListener("click", () => H.toggleBlind());
@@ -5296,7 +5259,7 @@
       const nextHidden = !(model.settings && model.settings.hidePanels);
       H.saveSettings(Object.assign({}, model.settings, { hidePanels: nextHidden }));
     });
-    byId("btn-footer-export").addEventListener("click", async () => {
+    byId("btn-footer-export")?.addEventListener("click", async () => {
       try { await H.exportJSON(); toast("Backup exported.", { type: "success" }); } catch (err) { toast(err.message || "Export failed.", { type: "error" }); }
     });
     byId("btn-empty-demo").addEventListener("click", async () => {
