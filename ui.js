@@ -639,16 +639,7 @@
 
   function renderBackup() {
     const banner = byId("backup-reminder");
-    if (!model.backupDue) {
-      banner.hidden = true;
-      return;
-    }
-    banner.hidden = false;
-    banner.innerHTML = `<span>You haven't exported a backup in ${model.backupDays} days.</span>
-      <span class="inline-actions" style="margin-left:auto">
-        <button type="button" class="btn btn-small" data-backup="export">Export now</button>
-        <button type="button" class="btn btn-ghost btn-small" data-backup="disable">Disable reminder</button>
-      </span>`;
+    if (banner) banner.hidden = true;
   }
 
   function renderBlindBanner() {
@@ -671,19 +662,6 @@
     byId("theme-icon").textContent = theme === "light" ? "☾" : "☀";
     byId("btn-blind").classList.toggle("is-active", !!model.blind);
     document.body.classList.toggle("blind-hide", !!(model.blind && model.settings.blindHideResults));
-  }
-
-  function setPanelVisibility() {
-    const isMissed = model && model.view === "missed";
-    const hidden = !!(model && model.settings && model.settings.hidePanels);
-    document.body.classList.toggle("panels-hidden", hidden);
-    const btn = byId("btn-hide-panels");
-    if (btn) {
-      btn.hidden = isMissed;
-      btn.textContent = hidden ? "Show Panels" : "Hide Panels";
-      btn.setAttribute("aria-pressed", hidden ? "true" : "false");
-      btn.classList.toggle("is-active", hidden);
-    }
   }
 
   function renderFooter() {
@@ -747,7 +725,10 @@
   function setPanelVisibility() {
     const isMissed = model && model.view === "missed";
     const isProfile = model && model.view === "profile";
-    const hidden = !!(model && model.settings && model.settings.hidePanels);
+    let hidden = !!(model && model.settings && model.settings.hidePanels);
+    if (typeof localStorage !== "undefined" && localStorage.getItem("ict_hide_panels") !== null) {
+      hidden = localStorage.getItem("ict_hide_panels") === "true";
+    }
     document.body.classList.toggle("panels-hidden", hidden);
     const btn = byId("btn-hide-panels");
     if (btn) {
@@ -868,7 +849,10 @@
       if (profileSection) profileSection.hidden = true;
       if (missedSection) missedSection.hidden = true;
       if (tradeSection) tradeSection.hidden = false;
-      const panelsHidden = !!(model && model.settings && model.settings.hidePanels);
+      let panelsHidden = !!(model && model.settings && model.settings.hidePanels);
+      if (typeof localStorage !== "undefined" && localStorage.getItem("ict_hide_panels") !== null) {
+        panelsHidden = localStorage.getItem("ict_hide_panels") === "true";
+      }
       if (dashSection) dashSection.hidden = panelsHidden;
       if (curveSection) curveSection.hidden = panelsHidden;
       if (analyticsSection) analyticsSection.hidden = panelsHidden;
@@ -3240,7 +3224,6 @@
           <div class="field"><label>Theme</label><select name="theme">${optionsHTML([{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }], s.theme)}</select></div>
           <div class="field"><label>Low sample warning below</label><input type="number" name="lowSampleThreshold" min="1" max="1000" value="${esc(s.lowSampleThreshold)}"></div>
           <div class="field"><label>Breakeven tolerance (R)</label><input type="number" name="breakevenTolerance" step="0.01" min="0" value="${esc(s.breakevenTolerance)}"><span class="hint">Results within ±tolerance count as breakeven.</span></div>
-          <div class="field"><label>Backup reminder</label><label class="switch" style="padding-top:5px"><input type="checkbox" name="backupReminder"${s.backupReminder ? " checked" : ""}> Remind me to export</label></div>
         </div>
       </div>
       <div class="form-section">
@@ -3372,7 +3355,7 @@
         theme: get("theme").value,
         lowSampleThreshold: Math.max(1, parseInt(get("lowSampleThreshold").value, 10) || 30),
         breakevenTolerance: Math.max(0, A.toNum(get("breakevenTolerance").value) || 0),
-        backupReminder: get("backupReminder").checked,
+        backupReminder: false,
         blindMode: get("blindMode").checked,
         blindHideResults: get("blindHideResults").checked,
         marketTimeZone: get("marketTimeZone").value.trim(),
@@ -5256,7 +5239,14 @@
       H.saveSettings(Object.assign({}, model.settings, { theme: nextTheme }));
     });
     byId("btn-hide-panels").addEventListener("click", () => {
-      const nextHidden = !(model.settings && model.settings.hidePanels);
+      let currentHidden = !!(model.settings && model.settings.hidePanels);
+      if (typeof localStorage !== "undefined" && localStorage.getItem("ict_hide_panels") !== null) {
+        currentHidden = localStorage.getItem("ict_hide_panels") === "true";
+      }
+      const nextHidden = !currentHidden;
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("ict_hide_panels", nextHidden ? "true" : "false");
+      }
       H.saveSettings(Object.assign({}, model.settings, { hidePanels: nextHidden }));
     });
     byId("btn-footer-export")?.addEventListener("click", async () => {
@@ -5265,16 +5255,6 @@
     byId("btn-empty-demo").addEventListener("click", async () => {
       await H.loadDemo(100);
       toast("100 demo trades loaded.", { type: "success" });
-    });
-
-    byId("backup-reminder").addEventListener("click", (event) => {
-      const btn = event.target.closest("[data-backup]");
-      if (!btn) return;
-      if (btn.dataset.backup === "export") {
-        Promise.resolve(H.exportJSON()).then(() => toast("Backup exported.", { type: "success" })).catch((err) => toast(err.message || "Export failed.", { type: "error" }));
-      } else {
-        H.saveSettings(Object.assign({}, model.settings, { backupReminder: false }));
-      }
     });
 
     byId("blind-banner").addEventListener("change", (event) => {

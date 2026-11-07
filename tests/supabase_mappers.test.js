@@ -87,6 +87,7 @@ const settingsOrig = {
   defaultRiskPct: 1.5,
   columns: ["tradeNumber", "date", "status", "result"],
   thresholds: { winR: 2 },
+  hidePanels: true,
   missedReasons: ["Hesitation", "Custom Reason"],
   theme: "dark",
   imgbbApiKey: "test_key_123",
@@ -95,11 +96,13 @@ const settingsRow = DB.toDbUserSettings(settingsOrig, "11111111-1111-1111-1111-1
 assert.strictEqual(settingsRow.account_balance, 25000);
 assert.strictEqual(settingsRow.default_risk_pct, 1.5);
 assert.strictEqual(settingsRow.imgbb_api_key, "test_key_123");
+assert.strictEqual(settingsRow.thresholds.hidePanels, true);
 
 const restoredSettings = DB.fromDbUserSettings(settingsRow);
 assert.strictEqual(restoredSettings.accountBalance, 25000);
 assert.strictEqual(restoredSettings.defaultRiskPct, 1.5);
 assert.strictEqual(restoredSettings.imgbbApiKey, "test_key_123");
+assert.strictEqual(restoredSettings.hidePanels, true);
 assert.strictEqual(restoredSettings.missedReasons.length, 2);
 console.log("  ok   User settings mapper round-trip preserved all fields");
 

@@ -37,7 +37,12 @@
   let missedTrades = [];
   let missedReasons = [];
   let screenshots = [];
-  let settings = A.defaultSettings();
+  let cachedHidePanels = false;
+  if (typeof localStorage !== "undefined") {
+    const val = localStorage.getItem("ict_hide_panels");
+    if (val !== null) cachedHidePanels = val === "true";
+  }
+  let settings = Object.assign({}, A.defaultSettings(), { hidePanels: cachedHidePanels });
   let filters = Object.assign({}, FILTER_DEFAULTS);
   let missedFilters = Object.assign({}, MISSED_FILTER_DEFAULTS);
   let sort = { key: "tradeNumber", dir: "asc" };
@@ -156,19 +161,7 @@
   }
 
   function backupStatus() {
-    if (!settings.backupReminder || !rawTrades.length) return { due: false, days: 0 };
-    if (!settings.lastExportDate) {
-      const oldest = rawTrades.reduce((min, t) => {
-        const time = Date.parse(t.createdAt || t.date || "");
-        return Number.isFinite(time) ? Math.min(min, time) : min;
-      }, Date.now());
-      const days = Math.max(0, Math.floor((Date.now() - oldest) / 86400000));
-      return { due: true, days: Math.max(30, days) };
-    }
-    const last = Date.parse(settings.lastExportDate);
-    if (!Number.isFinite(last)) return { due: true, days: 30 };
-    const days = Math.max(0, Math.floor((Date.now() - last) / 86400000));
-    return { due: days >= 30, days };
+    return { due: false, days: 0 };
   }
 
   function sanitizeMissedTrade(trade) {
@@ -241,6 +234,14 @@
     ]);
     const firstRun = !storedSettings || Object.keys(storedSettings).length === 0;
     settings = A.mergeSettings(storedSettings);
+    if (storedSettings && storedSettings.hidePanels !== undefined) {
+      settings.hidePanels = Boolean(storedSettings.hidePanels);
+    } else if (typeof localStorage !== "undefined" && localStorage.getItem("ict_hide_panels") !== null) {
+      settings.hidePanels = localStorage.getItem("ict_hide_panels") === "true";
+    }
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("ict_hide_panels", settings.hidePanels ? "true" : "false");
+    }
     let templates = storedTemplates;
     if (!storedSettings || !storedSettings.templatesInitialized) {
       if (!templates.length) {
@@ -295,7 +296,13 @@
   }
 
   async function saveSettings(nextSettings, options) {
+    if (nextSettings && nextSettings.hidePanels !== undefined && typeof localStorage !== "undefined") {
+      localStorage.setItem("ict_hide_panels", nextSettings.hidePanels ? "true" : "false");
+    }
     settings = A.mergeSettings(nextSettings);
+    if (nextSettings && nextSettings.hidePanels !== undefined) {
+      settings.hidePanels = Boolean(nextSettings.hidePanels);
+    }
     state.settings = settings;
     state.blind = !!settings.blindMode;
     await DB.setSettings(settings);

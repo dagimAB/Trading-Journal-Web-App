@@ -1471,7 +1471,7 @@
       autoSession: false,
       breakevenTolerance: 0,
       lowSampleThreshold: 30,
-      backupReminder: true,
+      backupReminder: false,
       lastExportDate: null,
       strategyRules: "",
       lastExitPlan: defaultExitPlan(),
