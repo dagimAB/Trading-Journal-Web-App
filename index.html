@@ -47,7 +47,10 @@
       <div id="auth-actions" class="auth-actions">
         <button id="btn-auth-signin" class="btn btn-ghost btn-small" type="button" title="Sign In">Sign In</button>
         <button id="btn-auth-signup" class="btn btn-secondary btn-small" type="button" title="Sign Up">Sign Up</button>
-        <span id="auth-user-badge" class="pill pill-user" hidden></span>
+        <button id="btn-profile-badge" class="btn btn-ghost btn-small auth-badge" type="button" title="View Trader Profile" hidden>
+          <span class="auth-avatar-circle" id="auth-avatar-circle">U</span>
+          <span id="auth-user-name">Profile</span>
+        </button>
         <button id="btn-auth-signout" class="btn btn-ghost btn-small" type="button" title="Sign Out" hidden>Sign Out</button>
       </div>
       <button id="btn-theme" class="btn btn-icon" type="button" title="Toggle dark / light" aria-label="Toggle theme">
@@ -288,6 +291,23 @@
         <p class="muted" id="missed-empty-sub">No missed trades recorded yet or matching your active filters.</p>
         <button id="btn-empty-log-missed" class="btn btn-primary" type="button">+ Log Missed Trade</button>
       </div>
+    </section>
+
+    <!-- Dedicated Profile Page -->
+    <section class="profile-section" id="profile-section" aria-label="Trader Profile & Account" hidden>
+      <div class="profile-head">
+        <div class="profile-head-left">
+          <button id="btn-profile-back" class="btn btn-ghost btn-small" type="button">← Back to Journal</button>
+          <div class="profile-title-wrap">
+            <h2>Trader Profile</h2>
+            <p class="muted">Manage your identity, risk preferences, and cloud account.</p>
+          </div>
+        </div>
+        <div class="profile-head-right">
+          <button id="btn-profile-save" class="btn btn-primary" type="button">Save Changes</button>
+        </div>
+      </div>
+      <div id="profile-content" class="profile-grid"></div>
     </section>
   </main>
 

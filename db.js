@@ -132,7 +132,7 @@
     return subscription;
   }
 
-  async function initUserSettings(userId) {
+  async function initUserSettings(userId, fullName = "") {
     const client = getClient();
     if (!client || !userId) return;
     try {
@@ -145,6 +145,7 @@
       if (!data) {
         const defaultSettings = {
           user_id: userId,
+          full_name: fullName || (currentUser?.user_metadata?.full_name || ""),
           account_balance: 10000,
           default_risk_pct: 1.0,
           visible_columns: [],
@@ -157,22 +158,26 @@
           updated_at: new Date().toISOString(),
         };
         await client.from("user_settings").upsert(defaultSettings);
+      } else if (fullName && !data.full_name) {
+        await client.from("user_settings").update({ full_name: fullName }).eq("user_id", userId);
       }
     } catch (err) {
       console.warn("Could not check/create default user_settings:", err);
     }
   }
 
-  async function signUp(email, password) {
+  async function signUp(email, password, fullName) {
     const client = getClient();
     if (!client) {
       throw new Error("Supabase is not configured. Please enter your Supabase URL & Anon Key.");
     }
-    const { data, error } = await client.auth.signUp({ email, password });
+    const cleanName = fullName ? String(fullName).trim() : "";
+    const options = cleanName ? { data: { full_name: cleanName } } : undefined;
+    const { data, error } = await client.auth.signUp({ email, password, options });
     if (error) throw error;
     currentUser = data.user || null;
     if (currentUser) {
-      await initUserSettings(currentUser.id);
+      await initUserSettings(currentUser.id, cleanName);
     }
     return data;
   }
@@ -189,6 +194,25 @@
       await initUserSettings(currentUser.id);
     }
     return data;
+  }
+
+  async function updateUserProfile(updates) {
+    const client = getClient();
+    if (!client || !currentUser) throw new Error("Not authenticated.");
+    const patch = updates || {};
+    if (patch.fullName) {
+      await client.auth.updateUser({ data: { full_name: patch.fullName } });
+    }
+    if (patch.password) {
+      await client.auth.updateUser({ password: patch.password });
+    }
+    const settings = await getAllSettings();
+    if (patch.fullName !== undefined) settings.fullName = patch.fullName;
+    if (patch.accountBalance !== undefined) settings.accountBalance = patch.accountBalance;
+    if (patch.defaultRiskPct !== undefined) settings.defaultRiskPct = patch.defaultRiskPct;
+    if (patch.theme !== undefined) settings.theme = patch.theme;
+    await setSettings(settings);
+    return settings;
   }
 
   async function signOut() {
@@ -465,6 +489,7 @@
   function toDbUserSettings(settings, userId) {
     return {
       user_id: userId || (currentUser ? currentUser.id : "00000000-0000-0000-0000-000000000000"),
+      full_name: settings.fullName || (currentUser?.user_metadata?.full_name || ""),
       account_balance: settings.accountBalance !== undefined ? Number(settings.accountBalance) : 10000,
       default_risk_pct: settings.defaultRiskPct !== undefined ? Number(settings.defaultRiskPct) : 1.0,
       visible_columns: Array.isArray(settings.columns) ? settings.columns : [],
@@ -481,6 +506,7 @@
   function fromDbUserSettings(row) {
     if (!row) return null;
     return {
+      fullName: row.full_name || (currentUser?.user_metadata?.full_name || ""),
       accountBalance: row.account_balance !== null ? Number(row.account_balance) : 10000,
       defaultRiskPct: row.default_risk_pct !== null ? Number(row.default_risk_pct) : 1.0,
       columns: Array.isArray(row.visible_columns) ? row.visible_columns : null,
@@ -1328,6 +1354,7 @@
     signUp,
     signIn,
     signOut,
+    updateUserProfile,
     toDbTrade,
     fromDbTrade,
     toDbMissedTrade,

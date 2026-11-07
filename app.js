@@ -660,7 +660,7 @@
   }
 
   function setView(view) {
-    state.view = view === "missed" ? "missed" : "journal";
+    state.view = view === "missed" ? "missed" : (view === "profile" ? "profile" : "journal");
     render();
   }
 
@@ -741,12 +741,18 @@
       render();
       return data;
     },
-    authSignUp: async function (email, password) {
-      const data = await DB.signUp(email, password);
+    authSignUp: async function (email, password, fullName) {
+      const data = await DB.signUp(email, password, fullName);
       state.user = data.user || null;
       await load();
       render();
       return data;
+    },
+    updateProfile: async function (updates) {
+      const res = await DB.updateUserProfile(updates);
+      await load();
+      render();
+      return res;
     },
     authSignOut: async function () {
       await DB.signOut();

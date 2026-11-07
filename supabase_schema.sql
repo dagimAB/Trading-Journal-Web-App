@@ -84,6 +84,7 @@ create table if not exists public.exit_plans (
 -- 4. USER SETTINGS & PREFERENCES TABLE (1:1 with auth.users)
 create table if not exists public.user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade default auth.uid(),
+  full_name text,
   account_balance numeric default 10000,
   default_risk_pct numeric default 1.0,
   visible_columns jsonb default '[]'::jsonb,
@@ -95,6 +96,9 @@ create table if not exists public.user_settings (
   imgbb_api_key text,
   updated_at timestamptz default now()
 );
+
+-- Ensure full_name column exists if table was already created earlier
+alter table public.user_settings add column if not exists full_name text;
 
 -- ENABLE ROW LEVEL SECURITY
 alter table public.trades enable row level security;
@@ -121,13 +125,13 @@ create policy "Users manage own exit plans" on public.exit_plans
 create policy "Users manage own settings" on public.user_settings
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
--- AUTOMATIC PROFILE / SETTINGS TRIGGER ON USER SIGNUP (Optional convenience)
+-- AUTOMATIC PROFILE / SETTINGS TRIGGER ON USER SIGNUP
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.user_settings (user_id)
-  values (new.id)
-  on conflict (user_id) do nothing;
+  insert into public.user_settings (user_id, full_name)
+  values (new.id, new.raw_user_meta_data->>'full_name')
+  on conflict (user_id) do update set full_name = coalesce(excluded.full_name, public.user_settings.full_name);
   return new;
 end;
 $$ language plpgsql security definer;
@@ -136,4 +140,3 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
-

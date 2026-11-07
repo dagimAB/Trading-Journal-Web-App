@@ -740,6 +740,20 @@
     }).join("");
   }
 
+  function setPanelVisibility() {
+    const isMissed = model && model.view === "missed";
+    const isProfile = model && model.view === "profile";
+    const hidden = !!(model && model.settings && model.settings.hidePanels);
+    document.body.classList.toggle("panels-hidden", hidden);
+    const btn = byId("btn-hide-panels");
+    if (btn) {
+      btn.hidden = isMissed || isProfile;
+      btn.textContent = hidden ? "Show Panels" : "Hide Panels";
+      btn.setAttribute("aria-pressed", hidden ? "true" : "false");
+      btn.classList.toggle("is-active", hidden);
+    }
+  }
+
   function render() {
     setTheme();
     setPanelVisibility();
@@ -747,21 +761,39 @@
     // Auth header state
     const signinBtn = byId("btn-auth-signin");
     const signupBtn = byId("btn-auth-signup");
-    const userBadge = byId("auth-user-badge");
+    const profileBadge = byId("btn-profile-badge");
+    const avatarCircle = byId("auth-avatar-circle");
+    const userNameSpan = byId("auth-user-name");
     const signoutBtn = byId("btn-auth-signout");
     const user = model && model.user;
-    if (signinBtn && signupBtn && userBadge && signoutBtn) {
+
+    const isMissed = model && model.view === "missed";
+    const isProfile = model && model.view === "profile";
+    const isJournal = !isMissed && !isProfile;
+
+    if (signinBtn && signupBtn && profileBadge && signoutBtn) {
       if (user) {
         signinBtn.hidden = true;
         signupBtn.hidden = true;
-        userBadge.hidden = false;
-        userBadge.textContent = user.email || "Account";
-        userBadge.title = `Signed in as ${user.email}`;
+        profileBadge.hidden = false;
+        profileBadge.classList.toggle("is-active", isProfile);
+
+        const fullName = user.user_metadata?.full_name || (model.settings && model.settings.fullName) || (user.email ? user.email.split("@")[0] : "Trader");
+        const initials = (fullName || "T")
+          .split(" ")
+          .filter(Boolean)
+          .map((w) => w[0].toUpperCase())
+          .slice(0, 2)
+          .join("") || "T";
+        if (avatarCircle) avatarCircle.textContent = initials;
+        if (userNameSpan) userNameSpan.textContent = fullName;
+        profileBadge.title = `Trader Profile (${user.email})`;
         signoutBtn.hidden = false;
       } else {
         signinBtn.hidden = false;
         signupBtn.hidden = false;
-        userBadge.hidden = true;
+        profileBadge.hidden = true;
+        profileBadge.classList.remove("is-active");
         signoutBtn.hidden = true;
       }
     }
@@ -779,33 +811,48 @@
       }
     }
 
-    const isMissed = model && model.view === "missed";
     document.body.classList.toggle("missed-trades-view", isMissed);
+    document.body.classList.toggle("profile-view", isProfile);
 
     const missedBtn = byId("btn-missed-trades");
     if (missedBtn) missedBtn.classList.toggle("is-active", isMissed);
 
     const hidePanelsBtn = byId("btn-hide-panels");
-    if (hidePanelsBtn) hidePanelsBtn.hidden = isMissed;
+    if (hidePanelsBtn) hidePanelsBtn.hidden = isMissed || isProfile;
 
     const newTradeBtn = byId("btn-new-trade");
     if (newTradeBtn) {
-      if (isMissed) {
+      if (isProfile) {
+        newTradeBtn.hidden = true;
+      } else if (isMissed) {
+        newTradeBtn.hidden = false;
         newTradeBtn.innerHTML = '<span aria-hidden="true">+</span> Log Missed Trade';
         newTradeBtn.title = "Log Missed Trade (Ctrl+N)";
       } else {
+        newTradeBtn.hidden = false;
         newTradeBtn.innerHTML = '<span aria-hidden="true">+</span> New Trade';
         newTradeBtn.title = "New trade (Ctrl+N)";
       }
     }
 
     const missedSection = byId("missed-trades-section");
+    const profileSection = byId("profile-section");
     const dashSection = byId("dashboard");
     const curveSection = byId("curve-panel");
     const tradeSection = byId("trade-section");
     const analyticsSection = byId("analytics");
 
-    if (isMissed) {
+    if (isProfile) {
+      if (profileSection) profileSection.hidden = false;
+      if (missedSection) missedSection.hidden = true;
+      if (dashSection) dashSection.hidden = true;
+      if (curveSection) curveSection.hidden = true;
+      if (tradeSection) tradeSection.hidden = true;
+      if (analyticsSection) analyticsSection.hidden = true;
+      renderProfilePage();
+      renderFooter();
+    } else if (isMissed) {
+      if (profileSection) profileSection.hidden = true;
       if (missedSection) missedSection.hidden = false;
       if (dashSection) dashSection.hidden = true;
       if (curveSection) curveSection.hidden = true;
@@ -814,6 +861,7 @@
       renderMissedTrades();
       renderFooter();
     } else {
+      if (profileSection) profileSection.hidden = true;
       if (missedSection) missedSection.hidden = true;
       if (tradeSection) tradeSection.hidden = false;
       const panelsHidden = !!(model && model.settings && model.settings.hidePanels);
@@ -3375,6 +3423,11 @@
         </div>
         <div id="auth-status-container"></div>
         <div class="form-grid" style="grid-template-columns: 1fr; gap: var(--space-3);">
+          ${activeTab === "signup" ? `
+          <div class="field">
+            <label>Full Name</label>
+            <input type="text" name="fullName" required placeholder="Dagim Abraham" autocomplete="name">
+          </div>` : ""}
           <div class="field">
             <label>Email Address</label>
             <input type="email" name="email" required placeholder="trader@example.com" autocomplete="email">
@@ -3414,8 +3467,15 @@
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const statusEl = form.querySelector("#auth-status-container");
+      const nameInput = form.querySelector('input[name="fullName"]');
+      const fullName = nameInput ? nameInput.value.trim() : "";
       const email = form.querySelector('input[name="email"]').value.trim();
       const password = form.querySelector('input[name="password"]').value;
+
+      if (activeTab === "signup" && !fullName) {
+        if (statusEl) statusEl.innerHTML = `<div class="auth-status-msg error">Please enter your full name.</div>`;
+        return;
+      }
 
       if (!email || !password) {
         if (statusEl) {
@@ -3429,7 +3489,7 @@
 
       try {
         if (activeTab === "signup") {
-          await H.authSignUp(email, password);
+          await H.authSignUp(email, password, fullName);
           toast("Account created! Check your email to confirm or sign in.", { type: "success" });
         } else {
           await H.authSignIn(email, password);
@@ -4751,6 +4811,231 @@
     setImage();
   }
 
+  function renderProfilePage() {
+    const section = byId("profile-section");
+    if (!section || section.hidden) return;
+
+    const content = byId("profile-content");
+    if (!content) return;
+
+    const user = model && model.user;
+    const s = (model && model.settings) || {};
+    const fullName = user?.user_metadata?.full_name || s.fullName || "";
+    const email = user?.email || "Guest Trader";
+    const memberSince = user?.created_at
+      ? new Date(user.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+      : "Local Session";
+    const uid = user?.id || "local-session";
+    const totalTrades = (model.allTrades || []).length;
+    const missedTrades = (model.missedTrades || []).length;
+    const exitPlansCount = (model.templates || []).length;
+    const isCloud = !!(user && window.ICT_DB && window.ICT_DB.isSupabaseActive && window.ICT_DB.isSupabaseActive());
+
+    const initials = (fullName || email || "T")
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w[0].toUpperCase())
+      .slice(0, 2)
+      .join("") || "T";
+
+    content.innerHTML = `
+      <!-- Card 1: Trader Identity & Account -->
+      <div class="profile-card">
+        <div class="profile-card-header">
+          <h3><span>👤</span> Identity & Account</h3>
+          <span class="pill pill-soft ${isCloud ? "pill-accent" : ""}">${isCloud ? "Cloud Synced" : "Local Storage"}</span>
+        </div>
+        <div class="profile-user-hero">
+          <div class="profile-large-avatar">${esc(initials)}</div>
+          <div class="profile-hero-meta">
+            <div class="profile-hero-name">${esc(fullName || email)}</div>
+            <div class="profile-hero-role">
+              <span class="pulse-dot"></span>
+              <span>${isCloud ? "Pro Trader · Supabase PostgreSQL" : "Local Workspace Mode"}</span>
+            </div>
+          </div>
+        </div>
+        <div class="form-grid" style="grid-template-columns: 1fr; gap: var(--space-3);">
+          <div class="field">
+            <label for="profile-full-name">Full Name</label>
+            <input type="text" id="profile-full-name" value="${esc(fullName)}" placeholder="e.g. Dagim Abraham" autocomplete="name">
+          </div>
+          <div class="field">
+            <label for="profile-email">Email Address</label>
+            <div style="display: flex; gap: var(--space-2); align-items: center;">
+              <input type="email" id="profile-email" value="${esc(email)}" readonly style="opacity: 0.85; flex: 1;">
+              ${user ? '<span class="pill pill-soft pill-accent" style="white-space: nowrap;">✓ Verified</span>' : ""}
+            </div>
+          </div>
+          <div class="field">
+            <label>User ID</label>
+            <div style="display: flex; gap: var(--space-2); align-items: center;">
+              <input type="text" id="profile-user-id" value="${esc(uid)}" readonly style="opacity: 0.75; font-family: monospace; font-size: 11px; flex: 1;">
+              <button type="button" class="btn btn-ghost btn-small" id="profile-copy-uid" title="Copy User ID">Copy</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Account Created</label>
+            <span class="muted" style="font-size: var(--fs-sm);">${esc(memberSince)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2: Trading Capital & Risk Preferences -->
+      <div class="profile-card">
+        <div class="profile-card-header">
+          <h3><span>⚖️</span> Capital & Risk Management</h3>
+        </div>
+        <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+          <div class="field">
+            <label for="profile-initial-balance">Starting Capital ($)</label>
+            <input type="number" id="profile-initial-balance" min="0" step="1000" value="${esc(s.accountBalance || s.initialBalance || 100000)}">
+            <span class="hint">Base equity used for currency P&L projections.</span>
+          </div>
+          <div class="field">
+            <label for="profile-default-risk">Default Risk per Trade (%)</label>
+            <input type="number" id="profile-default-risk" min="0.1" max="100" step="0.25" value="${esc(s.defaultRiskPct || s.defaultRiskPercent || 1)}">
+            <span class="hint">Standard risk percentage per position.</span>
+          </div>
+          <div class="field span-2">
+            <label for="profile-breakeven-tolerance">Breakeven Tolerance (±R)</label>
+            <input type="number" id="profile-breakeven-tolerance" step="0.01" min="0" value="${esc(s.breakevenTolerance || 0.1)}">
+            <span class="hint">Results within ±tolerance count as breakeven.</span>
+          </div>
+          <div class="field span-2">
+            <label for="profile-strategy-rules">Strategy Rules & Entry Checklist</label>
+            <textarea id="profile-strategy-rules" rows="4" placeholder="Your entry checklist, risk rules, invalidation criteria…">${esc(s.strategyRules || "")}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 3: Cloud Database & Synchronization -->
+      <div class="profile-card">
+        <div class="profile-card-header">
+          <h3><span>☁️</span> Cloud Database & Sync</h3>
+          <span class="muted" style="font-size: var(--fs-xs); display: flex; align-items: center; gap: 6px;">
+            <span class="pulse-dot"></span> PostgreSQL Active
+          </span>
+        </div>
+        <p class="muted" style="font-size: var(--fs-xs); margin: 0;">
+          All trades, exit plans, and missed setups are securely synced to your cloud account with Row-Level Security.
+        </p>
+        <div class="profile-stat-pills">
+          <div class="profile-stat-box">
+            <div class="profile-stat-val">${totalTrades}</div>
+            <div class="profile-stat-lbl">Executed Trades</div>
+          </div>
+          <div class="profile-stat-box">
+            <div class="profile-stat-val">${missedTrades}</div>
+            <div class="profile-stat-lbl">Missed Setups</div>
+          </div>
+          <div class="profile-stat-box">
+            <div class="profile-stat-val">${exitPlansCount}</div>
+            <div class="profile-stat-lbl">Exit Plans</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2);">
+          <button type="button" class="btn btn-secondary btn-small" id="profile-btn-export">Export Cloud Backup (JSON)</button>
+          <button type="button" class="btn btn-ghost btn-small" id="profile-btn-migrate">Migrate Local Storage Data</button>
+        </div>
+      </div>
+
+      <!-- Card 4: Security & Authentication -->
+      <div class="profile-card">
+        <div class="profile-card-header">
+          <h3><span>🔒</span> Security & Authentication</h3>
+        </div>
+        ${user ? `
+        <div class="form-grid" style="grid-template-columns: 1fr; gap: var(--space-3);">
+          <div class="field">
+            <label for="profile-new-password">Change Password</label>
+            <input type="password" id="profile-new-password" placeholder="New secure password" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label for="profile-confirm-password">Confirm New Password</label>
+            <input type="password" id="profile-confirm-password" placeholder="Repeat new password" autocomplete="new-password">
+          </div>
+          <div style="display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-1);">
+            <button type="button" class="btn btn-secondary btn-small" id="profile-btn-update-pwd">Update Password</button>
+            <button type="button" class="btn btn-ghost btn-small" id="profile-btn-signout" style="color: #ef4444;">Sign Out</button>
+          </div>
+        </div>
+        ` : `
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <p class="muted" style="font-size: var(--fs-sm); margin: 0;">
+            You are currently working in offline browser storage. Sign in or register to enable real-time cloud synchronization.
+          </p>
+          <div style="display: flex; gap: var(--space-2);">
+            <button type="button" class="btn btn-primary btn-small" id="profile-btn-signin">Sign In</button>
+            <button type="button" class="btn btn-secondary btn-small" id="profile-btn-signup">Create Account</button>
+          </div>
+        </div>
+        `}
+      </div>
+    `;
+
+    // Copy UID button
+    byId("profile-copy-uid")?.addEventListener("click", () => {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(uid);
+        toast("User ID copied to clipboard.", { type: "info" });
+      }
+    });
+
+    // Cloud Export
+    byId("profile-btn-export")?.addEventListener("click", async () => {
+      try {
+        await H.exportJSON();
+        toast("Backup exported successfully.", { type: "success" });
+      } catch (err) {
+        toast(err?.message || "Export failed.", { type: "error" });
+      }
+    });
+
+    // Local Migration
+    byId("profile-btn-migrate")?.addEventListener("click", async () => {
+      try {
+        const res = await H.migrateData();
+        toast(`Migrated ${res.tradesUploaded} trades and ${res.missedUploaded} missed trades to Supabase!`, { type: "success" });
+      } catch (err) {
+        toast(err?.message || "Migration failed.", { type: "error" });
+      }
+    });
+
+    // Password Update
+    byId("profile-btn-update-pwd")?.addEventListener("click", async () => {
+      const p1 = byId("profile-new-password")?.value;
+      const p2 = byId("profile-confirm-password")?.value;
+      if (!p1 || p1.length < 6) {
+        toast("Password must be at least 6 characters.", { type: "error" });
+        return;
+      }
+      if (p1 !== p2) {
+        toast("Passwords do not match.", { type: "error" });
+        return;
+      }
+      try {
+        await H.updateProfile({ password: p1 });
+        byId("profile-new-password").value = "";
+        byId("profile-confirm-password").value = "";
+        toast("Password updated successfully!", { type: "success" });
+      } catch (err) {
+        toast(err?.message || "Password update failed.", { type: "error" });
+      }
+    });
+
+    // Sign out from profile
+    byId("profile-btn-signout")?.addEventListener("click", async () => {
+      await H.authSignOut();
+      H.setView("journal");
+      toast("Signed out successfully.", { type: "info" });
+    });
+
+    // Sign in / Sign up buttons when offline
+    byId("profile-btn-signin")?.addEventListener("click", () => openAuthModal("signin"));
+    byId("profile-btn-signup")?.addEventListener("click", () => openAuthModal("signup"));
+  }
+
   function wireEvents() {
     byId("btn-new-trade").addEventListener("click", () => {
       if (model && model.view === "missed") openMissedTradeModal(null);
@@ -4896,8 +5181,56 @@
     byId("btn-empty-new").addEventListener("click", () => openTradeForm(null));
     byId("btn-auth-signin")?.addEventListener("click", () => openAuthModal("signin"));
     byId("btn-auth-signup")?.addEventListener("click", () => openAuthModal("signup"));
+    byId("btn-profile-badge")?.addEventListener("click", () => {
+      H.setView(model.view === "profile" ? "journal" : "profile");
+    });
+    byId("btn-profile-back")?.addEventListener("click", () => {
+      H.setView("journal");
+    });
+    byId("btn-profile-save")?.addEventListener("click", async () => {
+      const fullNameInput = byId("profile-full-name");
+      const balanceInput = byId("profile-initial-balance");
+      const riskInput = byId("profile-default-risk");
+      const beInput = byId("profile-breakeven-tolerance");
+      const strategyRulesInput = byId("profile-strategy-rules");
+
+      const fullName = fullNameInput ? fullNameInput.value.trim() : "";
+      const balance = balanceInput ? Number(balanceInput.value) : undefined;
+      const risk = riskInput ? Number(riskInput.value) : undefined;
+      const be = beInput ? Number(beInput.value) : undefined;
+      const strategyRules = strategyRulesInput ? strategyRulesInput.value : undefined;
+
+      try {
+        if (H.updateProfile && fullName) {
+          await H.updateProfile({ fullName });
+        }
+        if (H.saveSettings) {
+          const nextSettings = Object.assign({}, model.settings);
+          if (fullName) nextSettings.fullName = fullName;
+          if (balance !== undefined && !isNaN(balance)) {
+            nextSettings.accountBalance = balance;
+            nextSettings.initialBalance = balance;
+          }
+          if (risk !== undefined && !isNaN(risk)) {
+            nextSettings.defaultRiskPct = risk;
+            nextSettings.defaultRiskPercent = risk;
+          }
+          if (be !== undefined && !isNaN(be)) {
+            nextSettings.breakevenTolerance = be;
+          }
+          if (strategyRules !== undefined) {
+            nextSettings.strategyRules = strategyRules;
+          }
+          await H.saveSettings(nextSettings);
+        }
+        toast("Profile and trading preferences saved!", { type: "success" });
+      } catch (err) {
+        toast(err?.message || "Failed to save profile.", { type: "error" });
+      }
+    });
     byId("btn-auth-signout")?.addEventListener("click", async () => {
       await H.authSignOut();
+      H.setView("journal");
       toast("Signed out successfully.", { type: "info" });
     });
     byId("btn-migrate-now")?.addEventListener("click", async () => {
