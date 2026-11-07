@@ -140,3 +140,27 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- USER SELF-DELETION RPC
+create or replace function public.delete_user_account()
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_user_id uuid := auth.uid();
+begin
+  if v_user_id is null then
+    raise exception 'Not authenticated';
+  end if;
+  
+  -- Explicitly clean up user data
+  delete from public.trades where user_id = v_user_id;
+  delete from public.missed_trades where user_id = v_user_id;
+  delete from public.exit_plans where user_id = v_user_id;
+  delete from public.user_settings where user_id = v_user_id;
+  
+  -- Delete from auth.users (cascades remaining auth records)
+  delete from auth.users where id = v_user_id;
+end;
+$$;

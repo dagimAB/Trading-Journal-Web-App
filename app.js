@@ -758,10 +758,22 @@
       await DB.signOut();
       state.user = null;
       state.migrationAvailable = null;
+      state.view = "journal";
       rawTrades = [];
       missedTrades = [];
       rebuild();
       render();
+    },
+    deleteAccount: async function () {
+      const res = await DB.deleteUserAccount();
+      state.user = null;
+      state.migrationAvailable = null;
+      state.view = "journal";
+      rawTrades = [];
+      missedTrades = [];
+      rebuild();
+      render();
+      return res;
     },
     migrateData: async function () {
       const res = await DB.migrateLocalDataToSupabase();

@@ -4440,6 +4440,15 @@ body.profile-view #btn-new-trade {
   box-shadow: var(--shadow-sm);
 }
 
+.profile-card.span-2 {
+  grid-column: 1 / -1;
+}
+
+.profile-card-danger {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.03);
+}
+
 .profile-card-header {
   display: flex;
   align-items: center;

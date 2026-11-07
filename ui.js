@@ -4957,7 +4957,7 @@
           </div>
           <div style="display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-1);">
             <button type="button" class="btn btn-secondary btn-small" id="profile-btn-update-pwd">Update Password</button>
-            <button type="button" class="btn btn-ghost btn-small" id="profile-btn-signout" style="color: #ef4444;">Sign Out</button>
+            <button type="button" class="btn btn-ghost btn-small" id="profile-btn-signout">Log Out</button>
           </div>
         </div>
         ` : `
@@ -4972,6 +4972,26 @@
         </div>
         `}
       </div>
+
+      <!-- Card 5: Danger Zone -->
+      ${user ? `
+      <div class="profile-card profile-card-danger span-2">
+        <div class="profile-card-header">
+          <h3 style="color: #ef4444;"><span>⚠️</span> Danger Zone</h3>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); flex-wrap: wrap;">
+          <div>
+            <div style="font-weight: 600; color: var(--text);">Delete Trader Profile</div>
+            <p class="muted" style="margin: 4px 0 0 0; font-size: var(--fs-xs);">
+              Permanently delete your profile, trades, missed trades, and settings from the cloud database. This action cannot be undone.
+            </p>
+          </div>
+          <button type="button" class="btn btn-small" id="profile-btn-delete-account" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.35); font-weight: 600;">
+            Delete Profile
+          </button>
+        </div>
+      </div>
+      ` : ""}
     `;
 
     // Copy UID button
@@ -5024,11 +5044,28 @@
       }
     });
 
-    // Sign out from profile
+    // Log out from profile
     byId("profile-btn-signout")?.addEventListener("click", async () => {
       await H.authSignOut();
-      H.setView("journal");
-      toast("Signed out successfully.", { type: "info" });
+      toast("Logged out successfully.", { type: "info" });
+    });
+
+    // Delete account
+    byId("profile-btn-delete-account")?.addEventListener("click", async () => {
+      const ok = await confirm({
+        title: "Delete Trader Profile?",
+        message: "Are you sure you want to permanently delete your profile and account? All your cloud-synced trades, missed setups, exit plans, and settings will be permanently destroyed.",
+        confirmLabel: "Permanently Delete",
+        danger: true,
+      });
+      if (!ok) return;
+
+      try {
+        await H.deleteAccount();
+        toast("Your profile and cloud data have been permanently deleted.", { type: "info" });
+      } catch (err) {
+        toast(err?.message || "Failed to delete profile.", { type: "error" });
+      }
     });
 
     // Sign in / Sign up buttons when offline
@@ -5230,8 +5267,7 @@
     });
     byId("btn-auth-signout")?.addEventListener("click", async () => {
       await H.authSignOut();
-      H.setView("journal");
-      toast("Signed out successfully.", { type: "info" });
+      toast("Logged out successfully.", { type: "info" });
     });
     byId("btn-migrate-now")?.addEventListener("click", async () => {
       try {

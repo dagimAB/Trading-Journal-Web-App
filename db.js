@@ -227,6 +227,43 @@
     currentUser = null;
   }
 
+  async function deleteUserAccount() {
+    const client = getClient();
+    if (!client || !currentUser) throw new Error("Not authenticated.");
+    const uid = currentUser.id;
+
+    let rpcSuccess = false;
+    try {
+      const { error } = await client.rpc("delete_user_account");
+      if (!error) {
+        rpcSuccess = true;
+      }
+    } catch (e) {
+      console.warn("delete_user_account RPC not available or failed:", e);
+    }
+
+    if (!rpcSuccess) {
+      try {
+        await Promise.all([
+          client.from("trades").delete().eq("user_id", uid),
+          client.from("missed_trades").delete().eq("user_id", uid),
+          client.from("exit_plans").delete().eq("user_id", uid),
+          client.from("user_settings").delete().eq("user_id", uid),
+        ]);
+      } catch (err) {
+        console.warn("Error wiping user rows:", err);
+      }
+    }
+
+    try {
+      await client.auth.signOut();
+    } catch (err) {
+      console.warn("Sign out during delete error:", err);
+    }
+    currentUser = null;
+    return { ok: true, rpcSuccess };
+  }
+
   // ============================================================================
   // POSTGRESQL <-> FRONTEND FIELD MAPPERS
   // ============================================================================
@@ -1354,6 +1391,7 @@
     signUp,
     signIn,
     signOut,
+    deleteUserAccount,
     updateUserProfile,
     toDbTrade,
     fromDbTrade,
