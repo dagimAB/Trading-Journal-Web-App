@@ -1049,20 +1049,67 @@ textarea {
   background: var(--panel-2);
 }
 
-.trade-table tbody tr:nth-child(even) td.sticky {
-  background: color-mix(in srgb, var(--panel) 94%, var(--panel-3));
+.trade-table td.sticky-last,
+.trade-table th.sticky-last {
+  border-right: 1px solid var(--border);
 }
 
-.trade-table tbody tr:hover td.sticky {
+.trade-table td.sticky-right,
+.trade-table th.sticky-right {
+  position: sticky;
+  right: 0;
+  z-index: 15;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+}
+
+.trade-table thead th.sticky-right {
+  z-index: 30;
   background: var(--panel-2);
 }
 
-.trade-table tbody tr.is-selected td.sticky {
+.trade-table tbody tr:nth-child(even) td.sticky,
+.trade-table tbody tr:nth-child(even) td.sticky-right {
+  background: color-mix(in srgb, var(--panel) 94%, var(--panel-3));
+}
+
+.trade-table tbody tr:hover td.sticky,
+.trade-table tbody tr:hover td.sticky-right {
+  background: var(--panel-2);
+}
+
+.trade-table tbody tr.is-selected td.sticky,
+.trade-table tbody tr.is-selected td.sticky-right {
   background: var(--accent-soft);
 }
 
 .trade-table td.sticky::after {
   content: "";
+}
+
+.sl-quick-toggle {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  height: auto;
+  line-height: 1.4;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.sl-quick-toggle:hover {
+  color: var(--red);
+  border-color: var(--red);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+}
+
+.sl-quick-toggle.active {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
 }
 
 .trade-table td.right,

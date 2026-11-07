@@ -234,12 +234,23 @@
     ]);
     const firstRun = !storedSettings || Object.keys(storedSettings).length === 0;
     settings = A.mergeSettings(storedSettings);
-    if (storedSettings && storedSettings.hidePanels !== undefined) {
-      settings.hidePanels = Boolean(storedSettings.hidePanels);
-    } else if (typeof localStorage !== "undefined" && localStorage.getItem("ict_hide_panels") !== null) {
-      settings.hidePanels = localStorage.getItem("ict_hide_panels") === "true";
-    }
     if (typeof localStorage !== "undefined") {
+      if (localStorage.getItem("ict_hide_panels") !== null) {
+        settings.hidePanels = localStorage.getItem("ict_hide_panels") === "true";
+      } else if (storedSettings && storedSettings.hidePanels !== undefined) {
+        settings.hidePanels = Boolean(storedSettings.hidePanels);
+      }
+      if (localStorage.getItem("ict_theme")) {
+        settings.theme = localStorage.getItem("ict_theme");
+      }
+      if (localStorage.getItem("ict_columns")) {
+        try {
+          const localCols = JSON.parse(localStorage.getItem("ict_columns"));
+          if (localCols && typeof localCols === "object") {
+            settings.columns = Object.assign({}, settings.columns, localCols);
+          }
+        } catch (_) {}
+      }
       localStorage.setItem("ict_hide_panels", settings.hidePanels ? "true" : "false");
     }
     let templates = storedTemplates;
@@ -295,9 +306,18 @@
     return /[",\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
   }
 
+  let saveSettingsTimer = null;
   async function saveSettings(nextSettings, options) {
-    if (nextSettings && nextSettings.hidePanels !== undefined && typeof localStorage !== "undefined") {
-      localStorage.setItem("ict_hide_panels", nextSettings.hidePanels ? "true" : "false");
+    if (typeof localStorage !== "undefined") {
+      if (nextSettings && nextSettings.hidePanels !== undefined) {
+        localStorage.setItem("ict_hide_panels", nextSettings.hidePanels ? "true" : "false");
+      }
+      if (nextSettings && nextSettings.theme) {
+        localStorage.setItem("ict_theme", nextSettings.theme);
+      }
+      if (nextSettings && nextSettings.columns) {
+        localStorage.setItem("ict_columns", JSON.stringify(nextSettings.columns));
+      }
     }
     settings = A.mergeSettings(nextSettings);
     if (nextSettings && nextSettings.hidePanels !== undefined) {
@@ -305,9 +325,18 @@
     }
     state.settings = settings;
     state.blind = !!settings.blindMode;
-    await DB.setSettings(settings);
     rebuild();
     if (!options || options.render !== false) render();
+
+    if (saveSettingsTimer) clearTimeout(saveSettingsTimer);
+    saveSettingsTimer = setTimeout(async () => {
+      try {
+        await DB.setSettings(settings);
+      } catch (err) {
+        console.warn("Could not save settings to DB:", err);
+      }
+    }, 300);
+
     return settings;
   }
 
@@ -317,6 +346,25 @@
     if (!next.id) next.id = genId("trade");
     if (!next.createdAt) next.createdAt = new Date().toISOString();
     next.updatedAt = new Date().toISOString();
+
+    // Auto-save custom setups & batches
+    let settingsUpdated = false;
+    const customSetups = Array.isArray(settings.customSetups) ? settings.customSetups.slice() : [];
+    if (next.setup && !A.setupList(settings).includes(next.setup)) {
+      customSetups.push(next.setup);
+      settings.customSetups = customSetups;
+      settingsUpdated = true;
+    }
+    const customBatches = Array.isArray(settings.customBatches) ? settings.customBatches.slice() : [];
+    if (next.dataset && !customBatches.includes(next.dataset)) {
+      customBatches.push(next.dataset);
+      settings.customBatches = customBatches;
+      settingsUpdated = true;
+    }
+    if (settingsUpdated) {
+      saveSettings(settings, { render: false });
+    }
+
     await DB.putTrade(next);
     await load();
     render();
@@ -789,6 +837,29 @@
       render();
       return res;
     },
+    assignBatch: async function (ids, batchName) {
+      if (!ids || !ids.length || !batchName) return;
+      const clean = String(batchName).trim();
+      const customBatches = Array.isArray(settings.customBatches) ? settings.customBatches.slice() : [];
+      if (!customBatches.includes(clean)) {
+        customBatches.push(clean);
+        settings.customBatches = customBatches;
+        saveSettings(settings, { render: false });
+      }
+      for (const id of ids) {
+        await updateTrade(id, { dataset: clean });
+      }
+      await load();
+      render();
+    },
+    deleteTrades: async function (ids) {
+      if (!ids || !ids.length) return;
+      for (const id of ids) {
+        await DB.deleteTrade(id);
+      }
+      await load();
+      render();
+    },
   };
 
   async function boot() {
@@ -812,8 +883,15 @@
       }
       window.ICT.ui.init(state, handlers);
 
+      let lastLoadedUserId = state.user?.id || null;
       if (DB.onAuthStateChange) {
         DB.onAuthStateChange(async (event, session) => {
+          if (event === "TOKEN_REFRESHED") return;
+          const nextUserId = session?.user?.id || null;
+          if (nextUserId === lastLoadedUserId && event !== "SIGNED_IN" && event !== "SIGNED_OUT") {
+            return;
+          }
+          lastLoadedUserId = nextUserId;
           state.user = session?.user || null;
           if (session?.user) {
             await load();

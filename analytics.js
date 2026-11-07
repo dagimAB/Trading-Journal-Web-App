@@ -64,11 +64,12 @@
   const COLUMNS = [
     { key: "tradeNumber", label: "#", default: true, width: 62, sortable: true, sticky: 1 },
     { key: "date", label: "Date", default: true, width: 110, sortable: true, sticky: 2 },
-    { key: "day", label: "Day", default: false, width: 96, derived: true },
-    { key: "session", label: "Session", default: true, width: 118, sortable: true },
-    { key: "killzone", label: "Killzone", default: false, width: 132 },
     { key: "instrument", label: "Instrument", default: true, width: 104, sortable: true, sticky: 3 },
     { key: "direction", label: "Dir", default: true, width: 74, sortable: true },
+    { key: "status", label: "STATUS", default: true, width: 84, sortable: true, derived: true },
+    { key: "session", label: "Session", default: true, width: 118, sortable: true },
+    { key: "killzone", label: "Killzone", default: false, width: 132 },
+    { key: "day", label: "Day", default: false, width: 96, derived: true },
     { key: "setup", label: "Setup", default: true, width: 142, sortable: true },
     { key: "setupQuality", label: "Quality", default: true, width: 84 },
     { key: "htfBias", label: "HTF Bias", default: false, width: 104 },
@@ -87,7 +88,6 @@
     { key: "mae", label: "MAE", default: true, width: 80, sortable: true, numeric: true },
     { key: "remainderExitR", label: "Rem. Exit R", default: true, width: 104, numeric: true },
     { key: "finalR", label: "Result", default: true, width: 92, sortable: true, numeric: true, derived: true },
-    { key: "status", label: "STATUS", default: true, width: 84, sortable: true, derived: true },
     { key: "exitReason", label: "Exit", default: true, width: 130 },
     { key: "levelsHit", label: "Levels Hit", default: true, width: 96, derived: true },
     { key: "pathComplete", label: "Path ✓", default: false, width: 84 },
@@ -1491,7 +1491,14 @@
   function mergeSettings(stored) {
     const base = defaultSettings();
     const merged = Object.assign({}, base, stored || {});
-    merged.columns = Object.assign({}, base.columns, (stored && stored.columns) || {});
+    if (Array.isArray(stored && stored.columns)) {
+      const colMap = {};
+      COLUMNS.forEach((c) => { colMap[c.key] = false; });
+      stored.columns.forEach((k) => { colMap[k] = true; });
+      merged.columns = colMap;
+    } else {
+      merged.columns = Object.assign({}, base.columns, (stored && stored.columns) || {});
+    }
     merged.instrumentDecimals = Object.assign({}, base.instrumentDecimals, (stored && stored.instrumentDecimals) || {});
     merged.thresholds = Array.isArray(merged.thresholds) && merged.thresholds.length ? merged.thresholds : base.thresholds;
     merged.mfeBoundaries = Array.isArray(merged.mfeBoundaries) && merged.mfeBoundaries.length ? merged.mfeBoundaries : base.mfeBoundaries;
@@ -1529,8 +1536,13 @@
 
   function setupList(settings) {
     const custom = (settings && settings.customSetups) || [];
-    if (custom.length) return custom.slice();
-    return DEFAULTS.setups.slice();
+    return Array.from(new Set([...DEFAULTS.setups, ...custom].filter(Boolean)));
+  }
+
+  function batchList(settings, trades) {
+    const custom = (settings && settings.customBatches) || [];
+    const fromTrades = (trades || []).map((t) => t.dataset || t.batch).filter(Boolean);
+    return Array.from(new Set([...custom, ...fromTrades].filter(Boolean)));
   }
 
   function sessionList(settings) {
@@ -1948,6 +1960,7 @@
     instrumentDecimals,
     instrumentList,
     setupList,
+    batchList,
     sessionList,
     sessionFromTime,
     sortTrades,

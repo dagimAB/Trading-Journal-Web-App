@@ -533,12 +533,17 @@
     if (settings.hidePanels !== undefined) {
       thresholds.hidePanels = Boolean(settings.hidePanels);
     }
+    const cols = Array.isArray(settings.columns)
+      ? settings.columns
+      : (settings.columns && typeof settings.columns === "object"
+        ? Object.keys(settings.columns).filter((k) => settings.columns[k])
+        : []);
     return {
       user_id: userId || (currentUser ? currentUser.id : "00000000-0000-0000-0000-000000000000"),
       full_name: settings.fullName || (currentUser?.user_metadata?.full_name || ""),
       account_balance: settings.accountBalance !== undefined ? Number(settings.accountBalance) : 10000,
       default_risk_pct: settings.defaultRiskPct !== undefined ? Number(settings.defaultRiskPct) : 1.0,
-      visible_columns: Array.isArray(settings.columns) ? settings.columns : [],
+      visible_columns: cols,
       thresholds: thresholds,
       missed_reasons: Array.isArray(settings.missedReasons) ? settings.missedReasons : DEFAULT_MISSED_REASONS.slice(),
       custom_setups: Array.isArray(settings.customSetups) ? settings.customSetups : [],

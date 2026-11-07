@@ -242,21 +242,26 @@
   function stickyOffsets(columns) {
     const offsets = {};
     let left = 34;
+    let lastKey = null;
     columns.forEach((col) => {
       if (col.sticky) {
         offsets[col.key] = left;
         left += col.width;
+        lastKey = col.key;
       }
     });
-    return offsets;
+    return { offsets, lastKey };
   }
 
-  function rowHTML(trade, columns, offsets) {
+  function rowHTML(trade, columns, stickyInfo) {
+    const offsets = stickyInfo ? stickyInfo.offsets : {};
+    const lastKey = stickyInfo ? stickyInfo.lastKey : null;
     const cells = columns.map((col) => {
       const editable = INLINE_FIELDS.has(col.key);
       const right = col.numeric ? " right" : "";
       const center = col.key === "levelsHit" || col.key === "pathComplete" || col.key === "screenshot" || col.key === "status" ? " center" : "";
       const sticky = offsets[col.key] !== undefined;
+      const isLastSticky = col.key === lastKey;
       const style = sticky ? ` style="left:${offsets[col.key]}px"` : "";
       const field = editable ? ` data-field="${col.key}"` : "";
       const title = col.key === "mfe"
@@ -267,7 +272,7 @@
         : col.key === "bodySl" || col.key === "bodyRr" ? ' title="Body Stop-Loss R:R"'
         : col.key === "spcSl" || col.key === "spcRr" ? ' title="Space Stop-Loss R:R"' : "";
       const cellContent = col.key === "status" ? statusBadge(trade.finalR) : cellText(trade, col.key);
-      return `<td class="num${right}${center}${sticky ? " sticky" : ""}"${style}${field}${title}>${cellContent}</td>`;
+      return `<td class="num${right}${center}${sticky ? " sticky" : ""}${isLastSticky ? " sticky-last" : ""}"${style}${field}${title}>${cellContent}</td>`;
     }).join("");
     const rowClass = [trade.isDemo ? "is-demo" : "", trade.status === "incomplete" ? "incomplete" : "", selection.has(trade.id) ? "is-selected" : ""].filter(Boolean).join(" ");
     const checked = selection.has(trade.id) ? " checked" : "";
@@ -275,7 +280,7 @@
     return `<tr data-id="${esc(trade.id)}" class="${rowClass}">
       <td class="select-cell sticky" style="left:0"><input type="checkbox" data-select="1"${checked} aria-label="Select trade ${esc(trade.tradeNumber)}"></td>
       ${cells}
-      <td class="row-actions">
+      <td class="row-actions sticky-right">
         <button class="icon-btn" data-action="details" title="Open details">›</button>
         ${completeBtn}
         <button class="icon-btn" data-action="duplicate" title="Duplicate trade">⧉</button>
@@ -288,15 +293,21 @@
     const info = byId("selection-info");
     const apply = byId("btn-apply-template");
     const clear = byId("btn-clear-selection");
+    const assignBatch = byId("btn-assign-batch");
+    const delSelected = byId("btn-delete-selected");
     if (selection.size) {
       info.hidden = false;
       info.textContent = `${selection.size} selected`;
       apply.disabled = false;
       clear.hidden = false;
+      if (assignBatch) assignBatch.hidden = false;
+      if (delSelected) delSelected.hidden = false;
     } else {
       info.hidden = true;
       apply.disabled = true;
       clear.hidden = true;
+      if (assignBatch) assignBatch.hidden = true;
+      if (delSelected) delSelected.hidden = true;
     }
   }
 
@@ -310,7 +321,7 @@
 
     const trades = model.tableTrades;
     const columns = visibleColumns();
-    const offsets = stickyOffsets(columns);
+    const stickyInfo = stickyOffsets(columns);
     const ids = new Set(trades.map((t) => t.id));
     selection = new Set(Array.from(selection).filter((id) => ids.has(id)));
 
@@ -332,18 +343,19 @@
     const sortDir = model.sort.dir === "desc" ? "▼" : "▲";
     const headCells = columns.map((col) => {
       const sortable = !!col.sortable;
-      const sticky = offsets[col.key] !== undefined;
-      const style = sticky ? ` style="left:${offsets[col.key]}px"` : "";
+      const sticky = stickyInfo.offsets[col.key] !== undefined;
+      const isLastSticky = col.key === stickyInfo.lastKey;
+      const style = sticky ? ` style="left:${stickyInfo.offsets[col.key]}px"` : "";
       const right = col.numeric ? " right" : "";
       const sorted = sortable && sortKey === col.key ? " sorted" : "";
       const arrow = sortable ? `<span class="sort-arrow">${sortKey === col.key ? sortDir : "↕"}</span>` : "";
-      return `<th class="${sortable ? "sortable" : ""}${right}${sticky ? " sticky" : ""}${sorted}"${style}${sortable ? ` data-sort="${col.key}"` : ""}>${esc(col.label)}${arrow}</th>`;
+      return `<th class="${sortable ? "sortable" : ""}${right}${sticky ? " sticky" : ""}${isLastSticky ? " sticky-last" : ""}${sorted}"${style}${sortable ? ` data-sort="${col.key}"` : ""}>${esc(col.label)}${arrow}</th>`;
     }).join("");
 
     thead.innerHTML = `<tr>
       <th class="select-cell sticky" style="left:0"><input type="checkbox" id="select-all"${allSelected ? " checked" : ""} aria-label="Select all trades"></th>
       ${headCells}
-      <th class="center">Actions</th>
+      <th class="center row-actions-head sticky-right">Actions</th>
     </tr>`;
     const master = byId("select-all");
     if (master) master.indeterminate = selection.size > 0 && !allSelected;
@@ -366,7 +378,7 @@
 
     virtual.drawWindow = function () {
       if (!virtual.active) {
-        tbody.innerHTML = trades.map((t) => rowHTML(t, columns, offsets)).join("");
+        tbody.innerHTML = trades.map((t) => rowHTML(t, columns, stickyInfo)).join("");
         return;
       }
       const rowH = virtual.height;
@@ -375,7 +387,7 @@
       const end = Math.min(trades.length, start + Math.ceil(viewport / rowH) + 14);
       const rows = [];
       if (start > 0) rows.push(`<tr class="vpad"><td colspan="${virtual.cols}" style="height:${start * rowH}px"></td></tr>`);
-      for (let i = start; i < end; i++) rows.push(rowHTML(trades[i], columns, offsets));
+      for (let i = start; i < end; i++) rows.push(rowHTML(trades[i], columns, stickyInfo));
       if (end < trades.length) rows.push(`<tr class="vpad"><td colspan="${virtual.cols}" style="height:${(trades.length - end) * rowH}px"></td></tr>`);
       tbody.innerHTML = rows.join("");
     };
@@ -1877,6 +1889,14 @@
         pathInput.checked = true;
       } else if (reasonInput.value === "BE") {
         remainderInput.value = "0";
+      } else if (reasonInput.value === "Target" || reasonInput.value === "Target (Full)") {
+        const levels = opts.getLevels ? opts.getLevels() : draft.exitPlan;
+        if (Array.isArray(levels) && levels.length) {
+          const finalTier = levels[levels.length - 1];
+          if (finalTier && finalTier.targetR !== undefined && finalTier.targetR !== null) {
+            remainderInput.value = finalTier.targetR;
+          }
+        }
       }
       refreshPreview();
     });
@@ -2354,6 +2374,7 @@
     const instruments = A.instrumentList(model.settings);
     const sessions = A.sessionList(model.settings);
     const setups = A.setupList(model.settings);
+    const batches = A.batchList ? A.batchList(model.settings, model.allTrades) : [];
     const decimals = A.instrumentDecimals(base.instrument || "S&P500", model.settings);
 
     form.innerHTML = `
@@ -2365,7 +2386,7 @@
           <div class="field"><label>Session</label><select name="session">${optionsHTML(sessions, draft.session, "—")}</select></div>
           <div class="field" data-wrap="instrument"><label>Instrument <b class="req">*</b></label><select name="instrument">${optionsHTML(instruments, draft.instrument, "Select…")}</select><div class="field-errors" data-errors="instrument"></div></div>
           <div class="field" data-wrap="direction"><label>Direction <b class="req">*</b></label><select name="direction">${optionsHTML(A.DEFAULTS.directions, draft.direction)}</select><div class="field-errors" data-errors="direction"></div></div>
-          <div class="field"><label>Setup</label><select name="setup">${optionsHTML(setups, draft.setup, "—")}</select></div>
+          <div class="field"><label>Setup</label><input type="text" name="setup" list="setup-datalist" value="${esc(draft.setup || "")}" placeholder="Select or type setup…"><datalist id="setup-datalist">${setups.map(s => `<option value="${esc(s)}">`).join("")}</datalist></div>
           <div class="field" data-wrap="riskR"><label>Risk (R) <b class="req">*</b></label><input type="number" name="riskR" step="0.01" min="0.01" value="${esc(draft.riskR === null || draft.riskR === undefined ? "" : draft.riskR)}"><span class="hint">1R = normal risk · 0.5R = half risk</span><div class="field-errors" data-errors="riskR"></div></div>
         </div>
         <details class="collapsed-fields" data-optional-context style="margin-top:10px">
@@ -2400,19 +2421,28 @@
         </div>
         <div class="form-grid form-grid-3" style="margin-top:10px">
           <div class="field" data-wrap="wickRr">
-            <label>Wick SL (R:R)</label>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label>Wick SL (R:R)</label>
+              <button type="button" class="sl-quick-toggle" data-sl-toggle="wickRr" title="Quick toggle -1R (Stopped Out)">-1R (Stop)</button>
+            </div>
             <input type="text" name="wickRr" value="${esc(draft.wickRr || '')}" placeholder="e.g. 1:6R or 6">
             <span class="hint">Manual Wick stop R:R</span>
             <div class="field-errors" data-errors="wickRr"></div>
           </div>
           <div class="field" data-wrap="bodyRr">
-            <label>Body SL (R:R)</label>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label>Body SL (R:R)</label>
+              <button type="button" class="sl-quick-toggle" data-sl-toggle="bodyRr" title="Quick toggle -1R (Stopped Out)">-1R (Stop)</button>
+            </div>
             <input type="text" name="bodyRr" value="${esc(draft.bodyRr || '')}" placeholder="e.g. 1:7.5R or 7.5">
             <span class="hint">Manual Body stop R:R</span>
             <div class="field-errors" data-errors="bodyRr"></div>
           </div>
           <div class="field" data-wrap="spcSl">
-            <label>SPC SL (R:R)</label>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label>SPC SL (R:R)</label>
+              <button type="button" class="sl-quick-toggle" data-sl-toggle="spcSl" title="Quick toggle -1R (Stopped Out)">-1R (Stop)</button>
+            </div>
             <input type="text" name="spcSl" value="${esc(draft.spcSl || '')}" placeholder="e.g. 6.4 or -1">
             <span class="hint">Manual Space stop R:R</span>
             <div class="field-errors" data-errors="spcSl"></div>
@@ -2447,7 +2477,7 @@
           <summary>Notes, batch &amp; additional screenshots (optional)</summary>
           <div class="field" style="margin-top:8px"><textarea name="notes" rows="3" placeholder="What was the story? What would you repeat or avoid?">${esc(draft.notes || "")}</textarea></div>
           <div class="form-grid" style="margin-top:10px">
-            <div class="field"><label>Batch</label><input type="text" name="dataset" value="${esc(draft.dataset || "")}" placeholder="e.g. Backtest Batch 1"></div>
+            <div class="field"><label>Batch</label><input type="text" name="dataset" list="batch-datalist" value="${esc(draft.dataset || "")}" placeholder="e.g. gu-eu-24-jan"><datalist id="batch-datalist">${batches.map(b => `<option value="${esc(b)}">`).join("")}</datalist></div>
             <div class="field"><label>Additional Screenshots</label><div data-shots></div><span class="hint">Extra context images; multiple uploads supported.</span></div>
           </div>
         </details>
@@ -2486,20 +2516,51 @@
     const bodyRrInput = form.querySelector('[name="bodyRr"]');
     const spcSlInput = form.querySelector('[name="spcSl"]');
     if (wickRrInput) {
-      const onWickChange = (e) => { draft.wickRr = e.target.value; };
+      const onWickChange = (e) => {
+        draft.wickRr = e.target.value;
+        const b = form.querySelector('[data-sl-toggle="wickRr"]');
+        if (b) b.classList.toggle("active", e.target.value.trim() === "-1" || e.target.value.trim() === "-1R");
+      };
       wickRrInput.addEventListener("input", onWickChange);
       wickRrInput.addEventListener("change", onWickChange);
     }
     if (bodyRrInput) {
-      const onBodyChange = (e) => { draft.bodyRr = e.target.value; };
+      const onBodyChange = (e) => {
+        draft.bodyRr = e.target.value;
+        const b = form.querySelector('[data-sl-toggle="bodyRr"]');
+        if (b) b.classList.toggle("active", e.target.value.trim() === "-1" || e.target.value.trim() === "-1R");
+      };
       bodyRrInput.addEventListener("input", onBodyChange);
       bodyRrInput.addEventListener("change", onBodyChange);
     }
     if (spcSlInput) {
-      const onSpcChange = (e) => { draft.spcSl = e.target.value; };
+      const onSpcChange = (e) => {
+        draft.spcSl = e.target.value;
+        const b = form.querySelector('[data-sl-toggle="spcSl"]');
+        if (b) b.classList.toggle("active", e.target.value.trim() === "-1" || e.target.value.trim() === "-1R");
+      };
       spcSlInput.addEventListener("input", onSpcChange);
       spcSlInput.addEventListener("change", onSpcChange);
     }
+
+    form.querySelectorAll("[data-sl-toggle]").forEach((btn) => {
+      const f = btn.dataset.slToggle;
+      const cur = String(draft[f] || "").trim();
+      if (cur === "-1" || cur === "-1R") btn.classList.add("active");
+      btn.addEventListener("click", () => {
+        const input = form.querySelector(`[name="${f}"]`);
+        if (!input) return;
+        if (input.value.trim() === "-1" || input.value.trim() === "-1R") {
+          input.value = "";
+          btn.classList.remove("active");
+          draft[f] = null;
+        } else {
+          input.value = "-1";
+          btn.classList.add("active");
+          draft[f] = -1;
+        }
+      });
+    });
 
     const shotHost = form.querySelector("[data-shots]");
     const shots = blind ? null : screenshotManager(isNew ? null : base.id, shotHost);
@@ -3984,6 +4045,36 @@
     });
   }
 
+  function openNewsModal() {
+    const iframe = h("iframe", {
+      src: "fx_news_calendar.html",
+      style: "width: 100%; height: 75vh; border: none; border-radius: var(--radius-sm); background: var(--bg);",
+      title: "FX News Calendar",
+    });
+    const footer = h("div", { class: "modal-foot", style: "display: flex; justify-content: space-between; align-items: center; width: 100%;" });
+    footer.appendChild(h("a", {
+      href: "fx_news_calendar.html",
+      target: "_blank",
+      rel: "noopener",
+      class: "btn btn-ghost btn-small",
+      text: "Open in New Tab ↗",
+    }));
+    const closeBtn = h("button", {
+      type: "button",
+      class: "btn btn-primary btn-small",
+      text: "Close",
+      onclick: () => entry.close("close"),
+    });
+    footer.appendChild(closeBtn);
+    const entry = openModal({
+      title: "FX News & Economic Calendar",
+      subtitle: "Scheduled macroeconomic events and high-impact releases.",
+      size: "modal-lg",
+      body: iframe,
+      footer,
+    });
+  }
+
   function openApplyTemplateModal() {
     if (!selection.size) return;
     const templates = model.templates || [];
@@ -5291,6 +5382,44 @@
       renderTable();
     });
     byId("btn-apply-template").addEventListener("click", openApplyTemplateModal);
+    byId("btn-news")?.addEventListener("click", openNewsModal);
+
+    byId("btn-assign-batch")?.addEventListener("click", async () => {
+      if (!selection.size) return;
+      const count = selection.size;
+      const batchName = await prompt({
+        title: "Assign Batch",
+        label: "Batch / Dataset Name",
+        placeholder: "e.g. gu-eu-24-jan",
+        confirmLabel: "Assign",
+      });
+      if (!batchName) return;
+      const clean = String(batchName).trim();
+      if (!clean) return;
+      if (H.assignBatch) {
+        await H.assignBatch(Array.from(selection), clean);
+        toast(`Assigned "${clean}" to ${count} trade(s).`, { type: "success" });
+        selection.clear();
+        renderTable();
+      }
+    });
+
+    byId("btn-delete-selected")?.addEventListener("click", async () => {
+      if (!selection.size) return;
+      const count = selection.size;
+      const ok = await confirm({
+        title: "Delete Selected Trades",
+        message: `Permanently delete ${count} selected trade(s)? This action cannot be undone.`,
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (!ok) return;
+      if (H.deleteTrades) {
+        await H.deleteTrades(Array.from(selection));
+        toast(`Deleted ${count} trade(s).`, { type: "success" });
+        selection.clear();
+      }
+    });
 
     byId("quick-filters").addEventListener("click", (event) => {
       const chip = event.target.closest("[data-quick]");

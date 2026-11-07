@@ -429,11 +429,11 @@ test("session suggestion uses historical clock time", () => {
   assert.strictEqual(A.sessionFromTime(""), null);
 });
 
-test("STATUS column is inserted right after RESULT column", () => {
-  const resultIdx = A.COLUMNS.findIndex((c) => c.key === "finalR");
-  assert.ok(resultIdx >= 0, "finalR (Result) column exists");
-  const statusCol = A.COLUMNS[resultIdx + 1];
-  assert.ok(statusCol, "STATUS column exists right after Result");
+test("STATUS column is inserted right next to direction column", () => {
+  const dirIdx = A.COLUMNS.findIndex((c) => c.key === "direction");
+  assert.ok(dirIdx >= 0, "direction (Dir) column exists");
+  const statusCol = A.COLUMNS[dirIdx + 1];
+  assert.ok(statusCol, "STATUS column exists right next to direction");
   assert.strictEqual(statusCol.key, "status");
   assert.strictEqual(statusCol.label, "STATUS");
   assert.strictEqual(statusCol.default, true);
