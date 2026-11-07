@@ -475,6 +475,7 @@ test("setupList combines default ICT setups, user settings, and existing trades"
     "Displacement",
     "FVG + Sweep",
     "OB + Sweep",
+    "Other",
   ];
 
   // 1. Without settings or trades -> returns exact 9 default ICT setups

@@ -30,6 +30,7 @@
       "Displacement",
       "FVG + Sweep",
       "OB + Sweep",
+      "Other",
     ],
     qualities: ["A+", "A", "B", "C"],
     directions: ["Long", "Short"],
@@ -1534,7 +1535,7 @@
   }
 
   function setupList(settings, trades) {
-    const custom = (settings && settings.customSetups) || [];
+    const custom = (settings && (settings.customSetups || settings.custom_setups)) || [];
     const fromTrades = (trades || []).map((t) => (t && t.setup ? String(t.setup).trim() : "")).filter(Boolean);
     return Array.from(new Set([...DEFAULTS.setups, ...custom, ...fromTrades].filter(Boolean)));
   }

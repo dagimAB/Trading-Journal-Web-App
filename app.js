@@ -368,6 +368,7 @@
       "Displacement",
       "FVG + Sweep",
       "OB + Sweep",
+      "Other",
     ];
     const customSetups = Array.isArray(settings.customSetups) ? settings.customSetups.slice() : [];
     if (next.setup && !defaultSetups.includes(next.setup) && !customSetups.includes(next.setup)) {
@@ -415,6 +416,7 @@
       "Displacement",
       "FVG + Sweep",
       "OB + Sweep",
+      "Other",
     ];
     const customSetups = Array.isArray(settings.customSetups) ? settings.customSetups.slice() : [];
     if (next.setup && !defaultSetups.includes(next.setup) && !customSetups.includes(next.setup)) {

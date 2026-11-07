@@ -2148,7 +2148,17 @@
       listEl.innerHTML = "";
       currentUrls.forEach((url, index) => {
         const chip = h("div", { class: "shot-chip" });
-        chip.appendChild(h("img", { src: url, alt: (opts.label || "Screenshot") + " " + (index + 1) }));
+        const chipImg = h("img", { src: url, alt: (opts.label || "Screenshot") + " " + (index + 1) });
+        chipImg.style.cursor = "zoom-in";
+        chipImg.title = "Click to enlarge";
+        chipImg.addEventListener("click", () => {
+          openModal({
+            title: (opts.label || "Screenshot") + " " + (index + 1),
+            size: "modal-xl max-w-7xl w-[90vw]",
+            body: `<div class="lightbox"><img src="${esc(url)}" alt="${esc(opts.label || "Screenshot")}" class="w-full h-auto max-h-[85vh] object-contain"></div>`,
+          });
+        });
+        chip.appendChild(chipImg);
         chip.appendChild(h("span", { class: "shot-name", text: "Image " + (index + 1) }));
         chip.appendChild(h("button", {
           type: "button", class: "icon-btn danger", title: "Remove screenshot", text: "×",
@@ -2373,10 +2383,10 @@
     const form = h("form", { class: "trade-form", novalidate: "novalidate" });
     const instruments = A.instrumentList(model.settings);
     const sessions = A.sessionList(model.settings);
-    const setups = A.setupList(model.settings, model.allTrades);
-    if (draft.setup && !setups.includes(draft.setup)) {
-      setups.push(draft.setup);
-    }
+    const defaultSetups = ["FVG", "Order Block", "Liquidity Sweep", "Breaker", "OTE", "MSS", "Displacement", "FVG + Sweep", "OB + Sweep", "Other"];
+    const customSetups = (model.settings && (model.settings.customSetups || model.settings.custom_setups)) || [];
+    const existingTableSetups = (model.allTrades || model.tableTrades || []).map((t) => t.setup).filter(Boolean);
+    const allSetupOptions = Array.from(new Set([...defaultSetups, ...customSetups, ...existingTableSetups, draft.setup].filter(Boolean)));
     const batches = A.batchList ? A.batchList(model.settings, model.allTrades) : [];
     const decimals = A.instrumentDecimals(base.instrument || "S&P500", model.settings);
 
@@ -2389,7 +2399,7 @@
           <div class="field"><label>Session</label><select name="session">${optionsHTML(sessions, draft.session, "—")}</select></div>
           <div class="field" data-wrap="instrument"><label>Instrument <b class="req">*</b></label><select name="instrument">${optionsHTML(instruments, draft.instrument, "Select…")}</select><div class="field-errors" data-errors="instrument"></div></div>
           <div class="field" data-wrap="direction"><label>Direction <b class="req">*</b></label><select name="direction">${optionsHTML(A.DEFAULTS.directions, draft.direction)}</select><div class="field-errors" data-errors="direction"></div></div>
-          <div class="field" data-wrap="setup"><label>Setup</label><input type="text" name="setup" list="setups-list" value="${esc(draft.setup || "")}" placeholder="Select or type setup…" autocomplete="off"><datalist id="setups-list">${setups.map(s => `<option value="${esc(s)}"></option>`).join("")}</datalist><div class="field-errors" data-errors="setup"></div></div>
+          <div class="field" data-wrap="setup"><label>Setup</label><input type="text" name="setup" list="setup-options" value="${esc(draft.setup || "")}" placeholder="Select or type setup…" autocomplete="off"><datalist id="setup-options">${allSetupOptions.map(s => `<option value="${esc(s)}"></option>`).join("")}</datalist><div class="field-errors" data-errors="setup"></div></div>
           <div class="field" data-wrap="riskR"><label>Risk (R) <b class="req">*</b></label><input type="number" name="riskR" step="0.01" min="0.01" value="${esc(draft.riskR === null || draft.riskR === undefined ? "" : draft.riskR)}"><span class="hint">1R = normal risk · 0.5R = half risk</span><div class="field-errors" data-errors="riskR"></div></div>
         </div>
         <details class="collapsed-fields" data-optional-context style="margin-top:10px">
@@ -3108,8 +3118,8 @@
       img.addEventListener("click", () => {
         openModal({
           title: name,
-          size: "modal-lg",
-          body: `<div class="lightbox"><img src="${esc(src)}" alt="${esc(name)}"></div>`,
+          size: "modal-xl max-w-7xl w-[90vw]",
+          body: `<div class="lightbox"><img src="${esc(src)}" alt="${esc(name)}" class="w-full h-auto max-h-[85vh] object-contain"></div>`,
         });
       });
       const cap = h("figcaption", { text: name });
