@@ -329,6 +329,15 @@
     if (!options || options.render !== false) render();
 
     if (saveSettingsTimer) clearTimeout(saveSettingsTimer);
+    if (options && options.immediate) {
+      try {
+        await DB.setSettings(settings);
+      } catch (err) {
+        console.warn("Could not save settings to DB:", err);
+      }
+      return settings;
+    }
+
     saveSettingsTimer = setTimeout(async () => {
       try {
         await DB.setSettings(settings);
@@ -349,20 +358,33 @@
 
     // Auto-save custom setups & batches
     let settingsUpdated = false;
+    const defaultSetups = A.DEFAULTS?.setups || [
+      "FVG",
+      "Order Block",
+      "Liquidity Sweep",
+      "Breaker",
+      "OTE",
+      "MSS",
+      "Displacement",
+      "FVG + Sweep",
+      "OB + Sweep",
+    ];
     const customSetups = Array.isArray(settings.customSetups) ? settings.customSetups.slice() : [];
-    if (next.setup && !A.setupList(settings).includes(next.setup)) {
+    if (next.setup && !defaultSetups.includes(next.setup) && !customSetups.includes(next.setup)) {
       customSetups.push(next.setup);
       settings.customSetups = customSetups;
+      if (state.settings) state.settings.customSetups = customSetups;
       settingsUpdated = true;
     }
     const customBatches = Array.isArray(settings.customBatches) ? settings.customBatches.slice() : [];
     if (next.dataset && !customBatches.includes(next.dataset)) {
       customBatches.push(next.dataset);
       settings.customBatches = customBatches;
+      if (state.settings) state.settings.customBatches = customBatches;
       settingsUpdated = true;
     }
     if (settingsUpdated) {
-      saveSettings(settings, { render: false });
+      await saveSettings(settings, { render: false, immediate: true });
     }
 
     await DB.putTrade(next);
@@ -382,6 +404,26 @@
       return { ok: false, errors: check.errors.map((e) => e.message), warnings: check.warnings.map((w) => w.message) };
     }
     next.updatedAt = new Date().toISOString();
+
+    const defaultSetups = A.DEFAULTS?.setups || [
+      "FVG",
+      "Order Block",
+      "Liquidity Sweep",
+      "Breaker",
+      "OTE",
+      "MSS",
+      "Displacement",
+      "FVG + Sweep",
+      "OB + Sweep",
+    ];
+    const customSetups = Array.isArray(settings.customSetups) ? settings.customSetups.slice() : [];
+    if (next.setup && !defaultSetups.includes(next.setup) && !customSetups.includes(next.setup)) {
+      customSetups.push(next.setup);
+      settings.customSetups = customSetups;
+      if (state.settings) state.settings.customSetups = customSetups;
+      await saveSettings(settings, { render: false, immediate: true });
+    }
+
     await DB.putTrade(next);
     await load();
     render();

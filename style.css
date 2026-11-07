@@ -1871,6 +1871,20 @@ td .inline-error {
   flex: none;
 }
 
+.field input[list]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+  filter: invert(0.7);
+  transition: opacity 0.15s ease;
+}
+.field input[list]:hover::-webkit-calendar-picker-indicator,
+.field input[list]:focus::-webkit-calendar-picker-indicator {
+  opacity: 1;
+}
+[data-theme="light"] .field input[list]::-webkit-calendar-picker-indicator {
+  filter: none;
+}
+
 .field.has-error input,
 .field.has-error select,
 .field.has-error textarea {

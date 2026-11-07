@@ -464,6 +464,47 @@ test("statusBadge helper inspects numeric final result (>0 WIN, <0 LOSS, ==0 BE)
   assert.strictEqual(A.statusBadge(null), '<span class="muted">—</span>');
 });
 
+test("setupList combines default ICT setups, user settings, and existing trades", () => {
+  const defaults = [
+    "FVG",
+    "Order Block",
+    "Liquidity Sweep",
+    "Breaker",
+    "OTE",
+    "MSS",
+    "Displacement",
+    "FVG + Sweep",
+    "OB + Sweep",
+  ];
+
+  // 1. Without settings or trades -> returns exact 9 default ICT setups
+  const baseList = A.setupList();
+  assert.deepStrictEqual(baseList, defaults);
+
+  // 2. With custom setups from settings
+  const settings = { customSetups: ["Judas Swing", "Silver Bullet", "FVG"] };
+  const withSettings = A.setupList(settings);
+  assert.ok(withSettings.includes("Judas Swing"));
+  assert.ok(withSettings.includes("Silver Bullet"));
+  // "FVG" is not duplicated
+  assert.strictEqual(withSettings.filter((s) => s === "FVG").length, 1);
+
+  // 3. With trades having distinct custom setups
+  const trades = [
+    { id: "t1", setup: "Turtle Soup" },
+    { id: "t2", setup: "Silver Bullet" }, // in settings too
+    { id: "t3", setup: "Order Block" }, // in defaults too
+    { id: "t4", setup: "D Cont + 15m OB" },
+  ];
+  const fullList = A.setupList(settings, trades);
+  assert.ok(fullList.includes("Turtle Soup"));
+  assert.ok(fullList.includes("D Cont + 15m OB"));
+  assert.ok(fullList.includes("Silver Bullet"));
+  assert.ok(fullList.includes("FVG"));
+  assert.strictEqual(fullList.filter((s) => s === "Silver Bullet").length, 1);
+  assert.strictEqual(fullList.filter((s) => s === "Order Block").length, 1);
+});
+
 test("dual SL schema fields, calcRr, and formatRr", () => {
   // calcRr
   const rrLong = A.calcRr(100, 95, 130); // risk 5, reward 30 -> 6.0R

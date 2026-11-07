@@ -606,7 +606,7 @@
     const instrumentList = A.uniqueValues(model.allTrades.concat([{ instrument: "" }]), (t) => t.instrument || null);
     setSelectOptions(byId("filter-instrument"), A.instrumentList(model.settings), "All instruments", filters.instrument || "");
     setSelectOptions(byId("filter-session"), A.sessionList(model.settings), "All sessions", filters.session || "");
-    setSelectOptions(byId("filter-setup"), A.setupList(model.settings), "Any setup", filters.setup || "");
+    setSelectOptions(byId("filter-setup"), A.setupList(model.settings, model.allTrades), "Any setup", filters.setup || "");
     setSelectOptions(byId("filter-dataset"), uniqueFromTrades("dataset"), "All batches", filters.dataset || "");
     setSelectOptions(byId("filter-exit-plan"), exitPlanOptions(), "Any Exit Plan", filters.exitPlanKey || "");
 
@@ -2373,7 +2373,10 @@
     const form = h("form", { class: "trade-form", novalidate: "novalidate" });
     const instruments = A.instrumentList(model.settings);
     const sessions = A.sessionList(model.settings);
-    const setups = A.setupList(model.settings);
+    const setups = A.setupList(model.settings, model.allTrades);
+    if (draft.setup && !setups.includes(draft.setup)) {
+      setups.push(draft.setup);
+    }
     const batches = A.batchList ? A.batchList(model.settings, model.allTrades) : [];
     const decimals = A.instrumentDecimals(base.instrument || "S&P500", model.settings);
 
@@ -2386,7 +2389,7 @@
           <div class="field"><label>Session</label><select name="session">${optionsHTML(sessions, draft.session, "—")}</select></div>
           <div class="field" data-wrap="instrument"><label>Instrument <b class="req">*</b></label><select name="instrument">${optionsHTML(instruments, draft.instrument, "Select…")}</select><div class="field-errors" data-errors="instrument"></div></div>
           <div class="field" data-wrap="direction"><label>Direction <b class="req">*</b></label><select name="direction">${optionsHTML(A.DEFAULTS.directions, draft.direction)}</select><div class="field-errors" data-errors="direction"></div></div>
-          <div class="field"><label>Setup</label><input type="text" name="setup" list="setup-datalist" value="${esc(draft.setup || "")}" placeholder="Select or type setup…"><datalist id="setup-datalist">${setups.map(s => `<option value="${esc(s)}">`).join("")}</datalist></div>
+          <div class="field" data-wrap="setup"><label>Setup</label><input type="text" name="setup" list="setups-list" value="${esc(draft.setup || "")}" placeholder="Select or type setup…" autocomplete="off"><datalist id="setups-list">${setups.map(s => `<option value="${esc(s)}"></option>`).join("")}</datalist><div class="field-errors" data-errors="setup"></div></div>
           <div class="field" data-wrap="riskR"><label>Risk (R) <b class="req">*</b></label><input type="number" name="riskR" step="0.01" min="0.01" value="${esc(draft.riskR === null || draft.riskR === undefined ? "" : draft.riskR)}"><span class="hint">1R = normal risk · 0.5R = half risk</span><div class="field-errors" data-errors="riskR"></div></div>
         </div>
         <details class="collapsed-fields" data-optional-context style="margin-top:10px">
@@ -2582,6 +2585,17 @@
       if (timeInput.value) suggest();
     }
 
+    const setupInput = form.querySelector('[name="setup"]');
+    if (setupInput) {
+      const showSetupPicker = () => {
+        if (typeof setupInput.showPicker === "function") {
+          try { setupInput.showPicker(); } catch (_) {}
+        }
+      };
+      setupInput.addEventListener("click", showSetupPicker);
+      setupInput.addEventListener("focus", showSetupPicker);
+    }
+
     let resultFields = null;
     const planEditor = createPlanEditor({
       levels: draft.exitPlan,
@@ -2760,6 +2774,13 @@
         next.updatedAt = new Date().toISOString();
         if (isNew) next.createdAt = next.updatedAt;
         next.isDemo = !!base.isDemo;
+        if (next.setup) {
+          const defaultSetups = A.DEFAULTS.setups || [];
+          const cur = Array.isArray(model.settings.customSetups) ? model.settings.customSetups : [];
+          if (!defaultSetups.includes(next.setup) && !cur.includes(next.setup)) {
+            model.settings.customSetups = [...cur, next.setup];
+          }
+        }
         if (H.saveTrade) await H.saveTrade(next);
         if (shots) await shots.commit(next.id);
         model.settings.lastEntry = { date: next.date, instrument: next.instrument, session: next.session, direction: next.direction };
@@ -3838,7 +3859,7 @@
     killzone: () => A.DEFAULTS.killzones,
     instrument: () => A.instrumentList(model.settings),
     direction: () => A.DEFAULTS.directions,
-    setup: () => A.setupList(model.settings),
+    setup: () => A.setupList(model.settings, model.allTrades),
     setupQuality: () => A.DEFAULTS.qualities,
     htfBias: () => A.DEFAULTS.htfBiases,
     htfTimeframe: () => A.DEFAULTS.timeframes,

@@ -30,7 +30,6 @@
       "Displacement",
       "FVG + Sweep",
       "OB + Sweep",
-      "Other",
     ],
     qualities: ["A+", "A", "B", "C"],
     directions: ["Long", "Short"],
@@ -1534,9 +1533,10 @@
     return Array.from(new Set(Object.keys(DEFAULTS.instruments)));
   }
 
-  function setupList(settings) {
+  function setupList(settings, trades) {
     const custom = (settings && settings.customSetups) || [];
-    return Array.from(new Set([...DEFAULTS.setups, ...custom].filter(Boolean)));
+    const fromTrades = (trades || []).map((t) => (t && t.setup ? String(t.setup).trim() : "")).filter(Boolean);
+    return Array.from(new Set([...DEFAULTS.setups, ...custom, ...fromTrades].filter(Boolean)));
   }
 
   function batchList(settings, trades) {
