@@ -3226,16 +3226,8 @@
         <div class="decimals-grid">${decimals}</div>
       </div>
       <div class="form-section">
-        <h3>Cloud & Screenshots (Supabase / ImgBB)</h3>
+        <h3>Screenshots (ImgBB)</h3>
         <div class="form-grid">
-          <div class="field span-2">
-            <label>Supabase Project URL</label>
-            <input type="text" name="supabaseUrl" value="${esc(window.ICT_CONFIG?.SUPABASE_URL || "")}" placeholder="https://your-project.supabase.co">
-          </div>
-          <div class="field span-2">
-            <label>Supabase Anon Key</label>
-            <input type="password" name="supabaseAnonKey" value="${esc(window.ICT_CONFIG?.SUPABASE_ANON_KEY || "")}" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
-          </div>
           <div class="field span-4">
             <label>ImgBB API Key</label>
             <input type="password" name="imgbbApiKey" value="${esc(s.imgbbApiKey || window.ICT_CONFIG?.IMGBB_API_KEY || "")}" placeholder="Paste your ImgBB API key">
@@ -3354,16 +3346,9 @@
         strategyRules: get("strategyRules").value,
       });
 
-      const supabaseUrl = get("supabaseUrl") ? get("supabaseUrl").value.trim() : "";
-      const supabaseAnonKey = get("supabaseAnonKey") ? get("supabaseAnonKey").value.trim() : "";
       const imgbbApiKey = get("imgbbApiKey") ? get("imgbbApiKey").value.trim() : "";
-
-      if (window.ICT_CONFIG) {
-        window.ICT_CONFIG.update({
-          SUPABASE_URL: supabaseUrl,
-          SUPABASE_ANON_KEY: supabaseAnonKey,
-          IMGBB_API_KEY: imgbbApiKey,
-        });
+      if (window.ICT_CONFIG && imgbbApiKey) {
+        window.ICT_CONFIG.update({ IMGBB_API_KEY: imgbbApiKey });
       }
 
       saveBtn.disabled = true;
@@ -3383,7 +3368,6 @@
     const form = h("form", { class: "trade-form auth-form", novalidate: "novalidate" });
 
     function renderAuthContent() {
-      const isConfigured = window.ICT_CONFIG && window.ICT_CONFIG.isConfigured();
       form.innerHTML = `
         <div class="auth-modal-tabs">
           <button type="button" class="auth-modal-tab ${activeTab === "signin" ? "active" : ""}" data-tab="signin">Sign In</button>
@@ -3400,17 +3384,6 @@
             <input type="password" name="password" required placeholder="••••••••" autocomplete="${activeTab === "signup" ? "new-password" : "current-password"}">
           </div>
         </div>
-        <div style="margin-top: 14px;">
-          <button type="button" class="auth-config-toggle" id="auth-config-toggle">
-            ⚙️ ${isConfigured ? "Supabase Credentials (Configured)" : "⚠️ Enter Supabase URL & Anon Key"}
-          </button>
-          <div id="auth-config-box" class="auth-config-box" style="display: ${isConfigured ? "none" : "flex"};">
-            <label style="font-size: 11px; font-weight: 600;">Supabase Project URL</label>
-            <input type="text" id="auth-supabase-url" placeholder="https://your-project.supabase.co" value="${esc(window.ICT_CONFIG?.SUPABASE_URL || "")}">
-            <label style="font-size: 11px; font-weight: 600;">Supabase Anon Key</label>
-            <input type="password" id="auth-supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." value="${esc(window.ICT_CONFIG?.SUPABASE_ANON_KEY || "")}">
-          </div>
-        </div>
       `;
 
       form.querySelectorAll(".auth-modal-tab").forEach((btn) => {
@@ -3420,14 +3393,6 @@
           submitBtn.textContent = activeTab === "signup" ? "Create Account" : "Sign In";
         });
       });
-
-      const configToggle = form.querySelector("#auth-config-toggle");
-      const configBox = form.querySelector("#auth-config-box");
-      if (configToggle && configBox) {
-        configToggle.addEventListener("click", () => {
-          configBox.style.display = configBox.style.display === "none" ? "flex" : "none";
-        });
-      }
     }
 
     renderAuthContent();
@@ -3438,8 +3403,8 @@
     footer.appendChild(submitBtn);
 
     const entry = openModal({
-      title: "Supabase Account",
-      subtitle: "Secure persistent authentication and real-time database sync.",
+      title: activeTab === "signup" ? "Create Account" : "Sign In",
+      subtitle: "Secure cloud access to your backtesting journal.",
       size: "modal-sm",
       body: form,
       footer,
@@ -3451,15 +3416,6 @@
       const statusEl = form.querySelector("#auth-status-container");
       const email = form.querySelector('input[name="email"]').value.trim();
       const password = form.querySelector('input[name="password"]').value;
-
-      const urlInput = form.querySelector("#auth-supabase-url");
-      const keyInput = form.querySelector("#auth-supabase-key");
-      if (urlInput && keyInput && (urlInput.value.trim() || keyInput.value.trim())) {
-        window.ICT_CONFIG.update({
-          SUPABASE_URL: urlInput.value.trim(),
-          SUPABASE_ANON_KEY: keyInput.value.trim(),
-        });
-      }
 
       if (!email || !password) {
         if (statusEl) {

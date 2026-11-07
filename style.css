@@ -4306,35 +4306,6 @@ body.missed-trades-view #btn-hide-panels {
   border: 1px solid var(--border);
 }
 
-.auth-config-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--fs-xs);
-  color: var(--muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  margin-top: var(--space-3);
-  text-decoration: underline;
-}
-
-.auth-config-toggle:hover {
-  color: var(--accent);
-}
-
-.auth-config-box {
-  margin-top: var(--space-3);
-  padding: var(--space-3);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
 .auth-status-msg {
   padding: 8px 12px;
   border-radius: var(--radius-sm);
