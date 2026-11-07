@@ -11,6 +11,15 @@
 </head>
 <body>
   <div id="db-error" class="banner banner-error" hidden></div>
+  <div id="migration-banner" class="banner banner-soft" hidden>
+    <div class="banner-body">
+      <span id="migration-message"></span>
+      <div class="banner-actions">
+        <button id="btn-migrate-now" class="btn btn-primary btn-small" type="button">Migrate to Supabase</button>
+        <button id="btn-migrate-dismiss" class="btn btn-ghost btn-small" type="button">Dismiss</button>
+      </div>
+    </div>
+  </div>
   <div id="backup-reminder" class="banner banner-soft" hidden></div>
   <div id="blind-banner" class="banner banner-blind" hidden></div>
 
@@ -35,6 +44,12 @@
       <button id="btn-settings" class="btn btn-ghost" type="button">Settings</button>
       <a class="btn btn-ghost btn-small" href="fx_news_calendar.html" target="_blank" rel="noopener" title="Open FX news calendar">News</a>
       <button id="btn-hide-panels" class="btn btn-ghost btn-small" type="button" title="Hide performance, equity curve, and analytics" aria-pressed="false">Hide Panels</button>
+      <div id="auth-actions" class="auth-actions">
+        <button id="btn-auth-signin" class="btn btn-ghost btn-small" type="button" title="Sign In">Sign In</button>
+        <button id="btn-auth-signup" class="btn btn-secondary btn-small" type="button" title="Sign Up">Sign Up</button>
+        <span id="auth-user-badge" class="pill pill-user" hidden></span>
+        <button id="btn-auth-signout" class="btn btn-ghost btn-small" type="button" title="Sign Out" hidden>Sign Out</button>
+      </div>
       <button id="btn-theme" class="btn btn-icon" type="button" title="Toggle dark / light" aria-label="Toggle theme">
         <span id="theme-icon">◐</span>
       </button>
@@ -290,6 +305,8 @@
   <div id="toast-root" class="toast-root" aria-live="polite"></div>
   <input type="file" id="import-file" accept=".json,application/json" hidden />
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
   <script src="vendor/chart.umd.js"></script>
   <script src="analytics.js"></script>
   <script src="db.js"></script>

@@ -232,10 +232,12 @@
   }
 
   async function load() {
-    const [trades, storedTemplates, storedSettings] = await Promise.all([
+    const [trades, storedTemplates, storedSettings, storedMissed, storedReasons] = await Promise.all([
       DB.getAllTrades(),
       DB.getAllTemplates(),
       DB.getAllSettings(),
+      DB.getMissedTrades(),
+      DB.getMissedReasons(),
     ]);
     const firstRun = !storedSettings || Object.keys(storedSettings).length === 0;
     settings = A.mergeSettings(storedSettings);
@@ -251,8 +253,8 @@
       await DB.setSettings(settings);
     }
     rawTrades = trades;
-    missedTrades = DB.getMissedTrades ? DB.getMissedTrades() : [];
-    missedReasons = DB.getMissedReasons ? DB.getMissedReasons() : A.DEFAULT_MISSED_REASONS.slice();
+    missedTrades = Array.isArray(storedMissed) ? storedMissed : [];
+    missedReasons = Array.isArray(storedReasons) && storedReasons.length ? storedReasons : A.DEFAULT_MISSED_REASONS.slice();
     state.missedReasons = missedReasons;
     state.templates = templates.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true }));
     screenshots = await DB.getAllScreenshots();
@@ -436,6 +438,32 @@
   }
 
   async function loadDemo(count) {
+    if (DB.isSupabaseActive && DB.isSupabaseActive()) {
+      await DB.insertDemoTrades(state.user ? state.user.id : null);
+      if (!missedTrades.length) {
+        await DB.putMissedTrade(sanitizeMissedTrade({
+          date: todayISO(),
+          instrument: "S&P500",
+          session: "London",
+          direction: "Long",
+          potentialR: 5.5,
+          reason: "Hesitation",
+          notes: "Clean liquidity sweep into 15M FVG during London open. Hesitated pulling the trigger due to prior loss. Must execute without second-guessing.",
+        }));
+        await DB.putMissedTrade(sanitizeMissedTrade({
+          date: todayISO(),
+          instrument: "NAS100",
+          session: "New York AM",
+          direction: "Short",
+          potentialR: 7.2,
+          reason: "Missed Alert",
+          notes: "Alert triggered at key swing high during 9:50 AM silver bullet window. Was away from desk. Keep push notifications active on mobile.",
+        }));
+      }
+      await load();
+      render();
+      return 6;
+    }
     const demo = A.generateDemoTrades(count, { dataset: "Demo Data" });
     const offset = rawTrades.reduce((max, t) => Math.max(max, parseInt(t.tradeNumber, 10) || 0), 0);
     demo.forEach((trade, index) => {
@@ -468,7 +496,7 @@
           isDemo: true,
         }),
       ];
-      if (DB.saveMissedTrades) DB.saveMissedTrades(missedTrades);
+      if (DB.saveMissedTrades) await DB.saveMissedTrades(missedTrades);
     }
     await load();
     render();
@@ -579,23 +607,16 @@
     if (!check.valid) {
       return { ok: false, errors: check.errors.map((e) => e.message) };
     }
-    const idx = missedTrades.findIndex((m) => String(m.id) === String(next.id));
-    if (idx >= 0) {
-      missedTrades[idx] = next;
-    } else {
-      missedTrades.unshift(next);
-    }
-    if (DB.saveMissedTrades) DB.saveMissedTrades(missedTrades);
-    rebuildMissed();
+    await DB.putMissedTrade(next);
+    await load();
     render();
     return { ok: true, trade: next };
   }
 
   async function deleteMissedTrade(id) {
     const found = missedTrades.find((m) => String(m.id) === String(id));
-    missedTrades = missedTrades.filter((m) => String(m.id) !== String(id));
-    if (DB.saveMissedTrades) DB.saveMissedTrades(missedTrades);
-    rebuildMissed();
+    await DB.deleteMissedTrade(id);
+    await load();
     render();
     return found || null;
   }
@@ -618,7 +639,7 @@
     const exists = missedReasons.some((r) => r.toLowerCase() === trimmed.toLowerCase());
     if (!exists) {
       missedReasons.push(trimmed);
-      if (DB.saveMissedReasons) DB.saveMissedReasons(missedReasons);
+      await DB.saveMissedReasons(missedReasons);
     }
     state.missedReasons = missedReasons;
     render();
@@ -628,7 +649,7 @@
   async function deleteMissedReason(reasonToDelete) {
     const target = String(reasonToDelete || "").trim().toLowerCase();
     missedReasons = missedReasons.filter((r) => r.toLowerCase() !== target);
-    if (DB.saveMissedReasons) DB.saveMissedReasons(missedReasons);
+    await DB.saveMissedReasons(missedReasons);
     state.missedReasons = missedReasons;
     if (missedFilters.reason && missedFilters.reason.toLowerCase() === target) {
       missedFilters.reason = "All";
@@ -709,16 +730,83 @@
       return { trades, templates: templates.length, screenshots: shots.length, missedTrades: missedTrades.length };
     },
     storageEstimate: () => DB.getStorageEstimate(),
+    authSignIn: async function (email, password) {
+      const data = await DB.signIn(email, password);
+      state.user = data.user || null;
+      await load();
+      if (DB.checkLocalDataToMigrate) {
+        const check = await DB.checkLocalDataToMigrate();
+        if (check.hasData) state.migrationAvailable = check;
+      }
+      render();
+      return data;
+    },
+    authSignUp: async function (email, password) {
+      const data = await DB.signUp(email, password);
+      state.user = data.user || null;
+      await load();
+      render();
+      return data;
+    },
+    authSignOut: async function () {
+      await DB.signOut();
+      state.user = null;
+      state.migrationAvailable = null;
+      rawTrades = [];
+      missedTrades = [];
+      rebuild();
+      render();
+    },
+    migrateData: async function () {
+      const res = await DB.migrateLocalDataToSupabase();
+      state.migrationAvailable = null;
+      await load();
+      render();
+      return res;
+    },
   };
 
   async function boot() {
     try {
+      if (DB.initSupabase) DB.initSupabase();
+      if (DB.checkAuthSession) await DB.checkAuthSession();
+      state.user = DB.getUser ? DB.getUser() : null;
+
       await load();
+
+      if (state.user && DB.checkLocalDataToMigrate) {
+        const check = await DB.checkLocalDataToMigrate();
+        if (check.hasData) {
+          state.migrationAvailable = check;
+        }
+      }
+
       initialized = true;
       if (!window.ICT || !window.ICT.ui || typeof window.ICT.ui.init !== "function") {
         throw new Error("UI module failed to initialize. Please check for script errors in ui.js.");
       }
       window.ICT.ui.init(state, handlers);
+
+      if (DB.onAuthStateChange) {
+        DB.onAuthStateChange(async (event, session) => {
+          state.user = session?.user || null;
+          if (session?.user) {
+            await load();
+            if (DB.checkLocalDataToMigrate) {
+              const check = await DB.checkLocalDataToMigrate();
+              if (check.hasData) {
+                state.migrationAvailable = check;
+              }
+            }
+          } else {
+            rawTrades = [];
+            missedTrades = [];
+            state.migrationAvailable = null;
+            rebuild();
+          }
+          render();
+        });
+      }
     } catch (error) {
       showFatal(error);
     }

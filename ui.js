@@ -744,6 +744,41 @@
     setTheme();
     setPanelVisibility();
 
+    // Auth header state
+    const signinBtn = byId("btn-auth-signin");
+    const signupBtn = byId("btn-auth-signup");
+    const userBadge = byId("auth-user-badge");
+    const signoutBtn = byId("btn-auth-signout");
+    const user = model && model.user;
+    if (signinBtn && signupBtn && userBadge && signoutBtn) {
+      if (user) {
+        signinBtn.hidden = true;
+        signupBtn.hidden = true;
+        userBadge.hidden = false;
+        userBadge.textContent = user.email || "Account";
+        userBadge.title = `Signed in as ${user.email}`;
+        signoutBtn.hidden = false;
+      } else {
+        signinBtn.hidden = false;
+        signupBtn.hidden = false;
+        userBadge.hidden = true;
+        signoutBtn.hidden = true;
+      }
+    }
+
+    // Migration banner state
+    const migBanner = byId("migration-banner");
+    const migMsg = byId("migration-message");
+    if (migBanner && migMsg) {
+      if (model && model.migrationAvailable && model.migrationAvailable.hasData && user) {
+        const { tradesCount, missedCount } = model.migrationAvailable;
+        migMsg.innerHTML = `<strong>Local data detected:</strong> Found ${tradesCount} trade${tradesCount === 1 ? "" : "s"} and ${missedCount} missed trade${missedCount === 1 ? "" : "s"} in browser storage. Migrate them to your Supabase account?`;
+        migBanner.hidden = false;
+      } else {
+        migBanner.hidden = true;
+      }
+    }
+
     const isMissed = model && model.view === "missed";
     document.body.classList.toggle("missed-trades-view", isMissed);
 
@@ -1955,7 +1990,7 @@
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(0, 0, width, height);
             ctx.drawImage(img, 0, 0, width, height);
-            const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.75);
+            const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.8);
             resolve(jpegDataUrl);
           } catch (err) {
             console.warn("Canvas compression failed, falling back to dataUrl:", err);
@@ -1974,7 +2009,7 @@
     });
   }
 
-  async function uploadToImgBBWithTimeout(base64, name, apiKey, timeoutMs = 10000) {
+  async function uploadToImgBBWithTimeout(base64, name, apiKey, timeoutMs = 15000) {
     if (!apiKey) throw new Error("ImgBB API key not set.");
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -2023,9 +2058,9 @@
   }
 
   async function uploadToImgBB(base64, name) {
-    const apiKey = model && model.settings && model.settings.imgbbApiKey;
+    const apiKey = (model && model.settings && model.settings.imgbbApiKey) || (window.ICT_CONFIG && window.ICT_CONFIG.IMGBB_API_KEY);
     if (!apiKey) throw new Error("ImgBB API key not set. Go to Settings → ImgBB API key.");
-    return uploadToImgBBWithTimeout(base64, name, apiKey, 10000);
+    return uploadToImgBBWithTimeout(base64, name, apiKey, 15000);
   }
 
   async function imageFileToScreenshot(file) {
@@ -3191,6 +3226,24 @@
         <div class="decimals-grid">${decimals}</div>
       </div>
       <div class="form-section">
+        <h3>Cloud & Screenshots (Supabase / ImgBB)</h3>
+        <div class="form-grid">
+          <div class="field span-2">
+            <label>Supabase Project URL</label>
+            <input type="text" name="supabaseUrl" value="${esc(window.ICT_CONFIG?.SUPABASE_URL || "")}" placeholder="https://your-project.supabase.co">
+          </div>
+          <div class="field span-2">
+            <label>Supabase Anon Key</label>
+            <input type="password" name="supabaseAnonKey" value="${esc(window.ICT_CONFIG?.SUPABASE_ANON_KEY || "")}" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+          </div>
+          <div class="field span-4">
+            <label>ImgBB API Key</label>
+            <input type="password" name="imgbbApiKey" value="${esc(s.imgbbApiKey || window.ICT_CONFIG?.IMGBB_API_KEY || "")}" placeholder="Paste your ImgBB API key">
+            <span class="hint">Used for automatic screenshot uploads (HTF & LTF charts).</span>
+          </div>
+        </div>
+      </div>
+      <div class="form-section">
         <h3>Strategy rules</h3>
         <div class="field"><textarea name="strategyRules" rows="4" placeholder="Your entry checklist, risk rules, invalidation criteria…">${esc(s.strategyRules || "")}</textarea></div>
       </div>`;
@@ -3297,8 +3350,22 @@
         customSetups: tagState.customSetups.slice(),
         customSessions: tagState.customSessions.slice(),
         instrumentDecimals,
+        imgbbApiKey: get("imgbbApiKey") ? get("imgbbApiKey").value.trim() : (s.imgbbApiKey || ""),
         strategyRules: get("strategyRules").value,
       });
+
+      const supabaseUrl = get("supabaseUrl") ? get("supabaseUrl").value.trim() : "";
+      const supabaseAnonKey = get("supabaseAnonKey") ? get("supabaseAnonKey").value.trim() : "";
+      const imgbbApiKey = get("imgbbApiKey") ? get("imgbbApiKey").value.trim() : "";
+
+      if (window.ICT_CONFIG) {
+        window.ICT_CONFIG.update({
+          SUPABASE_URL: supabaseUrl,
+          SUPABASE_ANON_KEY: supabaseAnonKey,
+          IMGBB_API_KEY: imgbbApiKey,
+        });
+      }
+
       saveBtn.disabled = true;
       try {
         await H.saveSettings(next);
@@ -3307,6 +3374,121 @@
       } catch (err) {
         saveBtn.disabled = false;
         toast(err && err.message ? err.message : "Could not save settings.", { type: "error" });
+      }
+    });
+  }
+
+  function openAuthModal(defaultTab = "signin") {
+    let activeTab = defaultTab; // "signin" | "signup"
+    const form = h("form", { class: "trade-form auth-form", novalidate: "novalidate" });
+
+    function renderAuthContent() {
+      const isConfigured = window.ICT_CONFIG && window.ICT_CONFIG.isConfigured();
+      form.innerHTML = `
+        <div class="auth-modal-tabs">
+          <button type="button" class="auth-modal-tab ${activeTab === "signin" ? "active" : ""}" data-tab="signin">Sign In</button>
+          <button type="button" class="auth-modal-tab ${activeTab === "signup" ? "active" : ""}" data-tab="signup">Sign Up</button>
+        </div>
+        <div id="auth-status-container"></div>
+        <div class="form-grid" style="grid-template-columns: 1fr; gap: var(--space-3);">
+          <div class="field">
+            <label>Email Address</label>
+            <input type="email" name="email" required placeholder="trader@example.com" autocomplete="email">
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" name="password" required placeholder="••••••••" autocomplete="${activeTab === "signup" ? "new-password" : "current-password"}">
+          </div>
+        </div>
+        <div style="margin-top: 14px;">
+          <button type="button" class="auth-config-toggle" id="auth-config-toggle">
+            ⚙️ ${isConfigured ? "Supabase Credentials (Configured)" : "⚠️ Enter Supabase URL & Anon Key"}
+          </button>
+          <div id="auth-config-box" class="auth-config-box" style="display: ${isConfigured ? "none" : "flex"};">
+            <label style="font-size: 11px; font-weight: 600;">Supabase Project URL</label>
+            <input type="text" id="auth-supabase-url" placeholder="https://your-project.supabase.co" value="${esc(window.ICT_CONFIG?.SUPABASE_URL || "")}">
+            <label style="font-size: 11px; font-weight: 600;">Supabase Anon Key</label>
+            <input type="password" id="auth-supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." value="${esc(window.ICT_CONFIG?.SUPABASE_ANON_KEY || "")}">
+          </div>
+        </div>
+      `;
+
+      form.querySelectorAll(".auth-modal-tab").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          activeTab = btn.dataset.tab;
+          renderAuthContent();
+          submitBtn.textContent = activeTab === "signup" ? "Create Account" : "Sign In";
+        });
+      });
+
+      const configToggle = form.querySelector("#auth-config-toggle");
+      const configBox = form.querySelector("#auth-config-box");
+      if (configToggle && configBox) {
+        configToggle.addEventListener("click", () => {
+          configBox.style.display = configBox.style.display === "none" ? "flex" : "none";
+        });
+      }
+    }
+
+    renderAuthContent();
+
+    const footer = h("div", { class: "modal-foot" });
+    footer.appendChild(h("button", { type: "button", class: "btn btn-ghost", text: "Cancel", onclick: () => entry.close("cancel") }));
+    const submitBtn = h("button", { type: "button", class: "btn btn-primary", text: activeTab === "signup" ? "Create Account" : "Sign In", onclick: () => form.requestSubmit() });
+    footer.appendChild(submitBtn);
+
+    const entry = openModal({
+      title: "Supabase Account",
+      subtitle: "Secure persistent authentication and real-time database sync.",
+      size: "modal-sm",
+      body: form,
+      footer,
+      focus: 'input[name="email"]',
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = form.querySelector("#auth-status-container");
+      const email = form.querySelector('input[name="email"]').value.trim();
+      const password = form.querySelector('input[name="password"]').value;
+
+      const urlInput = form.querySelector("#auth-supabase-url");
+      const keyInput = form.querySelector("#auth-supabase-key");
+      if (urlInput && keyInput && (urlInput.value.trim() || keyInput.value.trim())) {
+        window.ICT_CONFIG.update({
+          SUPABASE_URL: urlInput.value.trim(),
+          SUPABASE_ANON_KEY: keyInput.value.trim(),
+        });
+      }
+
+      if (!email || !password) {
+        if (statusEl) {
+          statusEl.innerHTML = `<div class="auth-status-msg error">Please enter both email and password.</div>`;
+        }
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = activeTab === "signup" ? "Creating Account…" : "Signing In…";
+
+      try {
+        if (activeTab === "signup") {
+          await H.authSignUp(email, password);
+          toast("Account created! Check your email to confirm or sign in.", { type: "success" });
+        } else {
+          await H.authSignIn(email, password);
+          toast(`Signed in successfully as ${email}`, { type: "success" });
+        }
+        entry.close("success");
+      } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = activeTab === "signup" ? "Create Account" : "Sign In";
+        const msg = err && err.message ? err.message : "Authentication error.";
+        if (statusEl) {
+          statusEl.innerHTML = `<div class="auth-status-msg error">${esc(msg)}</div>`;
+        } else {
+          toast(msg, { type: "error" });
+        }
       }
     });
   }
@@ -3889,16 +4071,16 @@
       return str;
     }
 
-    // Input is a File or Blob -> Compress client-side to JPEG (max 1600px, quality 0.75)
+    // Input is a File or Blob -> Compress client-side to JPEG (max 1600px, quality 0.8)
     const compressedDataUrl = await compressImageToDataUrl(input);
 
-    const apiKey = model && model.settings && model.settings.imgbbApiKey;
+    const apiKey = (model && model.settings && model.settings.imgbbApiKey) || (window.ICT_CONFIG && window.ICT_CONFIG.IMGBB_API_KEY);
     if (apiKey) {
       try {
         const comma = compressedDataUrl.indexOf(",");
         const base64 = comma === -1 ? compressedDataUrl : compressedDataUrl.slice(comma + 1);
         const name = (input && input.name) ? input.name : "missed_chart.jpg";
-        const uploaded = await uploadToImgBBWithTimeout(base64, name, apiKey, 10000);
+        const uploaded = await uploadToImgBBWithTimeout(base64, name, apiKey, 15000);
         if (uploaded && uploaded.url) {
           return uploaded.url;
         }
@@ -4756,6 +4938,25 @@
       }
     });
     byId("btn-empty-new").addEventListener("click", () => openTradeForm(null));
+    byId("btn-auth-signin")?.addEventListener("click", () => openAuthModal("signin"));
+    byId("btn-auth-signup")?.addEventListener("click", () => openAuthModal("signup"));
+    byId("btn-auth-signout")?.addEventListener("click", async () => {
+      await H.authSignOut();
+      toast("Signed out successfully.", { type: "info" });
+    });
+    byId("btn-migrate-now")?.addEventListener("click", async () => {
+      try {
+        const res = await H.migrateData();
+        toast(`Successfully migrated ${res.tradesUploaded} trades and ${res.missedUploaded} missed trades to Supabase!`, { type: "success" });
+      } catch (err) {
+        toast(err && err.message ? err.message : "Migration failed.", { type: "error" });
+      }
+    });
+    byId("btn-migrate-dismiss")?.addEventListener("click", () => {
+      if (model) model.migrationAvailable = null;
+      const b = byId("migration-banner");
+      if (b) b.hidden = true;
+    });
     byId("btn-templates").addEventListener("click", openTemplatesModal);
     byId("btn-data").addEventListener("click", openDataModal);
     byId("btn-footer-demo").addEventListener("click", openDataModal);
