@@ -3041,7 +3041,7 @@
     const rClass = trade.finalR > 0 ? "pos" : trade.finalR < 0 ? "neg" : "zero";
     titleEl.innerHTML = `<span><b>Trade #${trade.tradeNumber || "—"}</b> · ${esc(trade.instrument || "")} ${esc(trade.direction || "")} · <span class="${rClass}">${finalRStr}</span> · <span class="muted">${esc(trade.setup || "")}</span></span>`;
 
-    const tfSwitcher = h("div", { class: "missed-tf-toggle" });
+    const tfSwitcher = h("div", { class: "missed-tf-toggle", style: { position: "static", margin: "0 auto", display: "inline-flex" } });
     if (items.length > 1) {
       tfSwitcher.innerHTML = items.map((it, idx) => `
         <button type="button" class="missed-tf-btn${idx === currentIndex ? " active" : ""}" data-lb-idx="${idx}">${esc(it.label)}</button>
@@ -5006,7 +5006,7 @@
     const titleEl = h("div", { class: "missed-lightbox-title" });
     titleEl.innerHTML = `<span><b>#Missed Trade</b> · ${esc(trade.instrument || "")} ${esc(trade.direction || "")} · <span class="pos">+${A.formatNumber(trade.potentialR, 1)}R</span> · <span class="muted">${esc(trade.reason || "")}</span></span>`;
 
-    const tfSwitcher = h("div", { class: "missed-tf-toggle" });
+    const tfSwitcher = h("div", { class: "missed-tf-toggle", style: { position: "static", margin: "0 auto", display: "inline-flex" } });
     if (hasHtf && hasLtf) {
       tfSwitcher.innerHTML = `
         <button type="button" class="missed-tf-btn${currentTf === "HTF" ? " active" : ""}" data-lb-tf="HTF">HTF</button>

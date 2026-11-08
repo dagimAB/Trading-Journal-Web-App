@@ -3833,19 +3833,31 @@ body.profile-view #btn-new-trade {
   opacity: 0.6;
 }
 
-/* Sleek Floating Pill Toggle in top-right */
-.missed-tf-toggle {
+/* Sleek Floating Pill Toggle in top-right for cards */
+.missed-card .missed-tf-toggle,
+.missed-card-shot .missed-tf-toggle {
   position: absolute;
   top: 12px;
   right: 12px;
   z-index: 5;
-  display: flex;
+}
+
+.missed-tf-toggle {
+  display: inline-flex;
   gap: 3px;
   background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: var(--radius-full);
   padding: 3px;
+}
+
+.missed-lightbox-head .missed-tf-toggle {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  margin: 0 auto;
+  z-index: 1;
 }
 
 [data-theme="light"] .missed-tf-toggle {
