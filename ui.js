@@ -2025,7 +2025,7 @@
         const img = new Image();
         img.onload = () => {
           try {
-            const max = 1600;
+            const max = 2560; // Preserve high resolution for sharp chart candles & text
             let width = img.naturalWidth || img.width || 800;
             let height = img.naturalHeight || img.height || 600;
 
@@ -2043,10 +2043,13 @@
               return resolve(dataUrl);
             }
 
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(0, 0, width, height);
             ctx.drawImage(img, 0, 0, width, height);
-            const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.8);
+            // 0.95 high quality JPEG so charts match Missed Trades quality
+            const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.95);
             resolve(jpegDataUrl);
           } catch (err) {
             console.warn("Canvas compression failed, falling back to dataUrl:", err);
@@ -2192,7 +2195,8 @@
       for (const file of list) {
         try {
           const shot = await imageFileToScreenshot(file);
-          addUrl(shot.displayUrl || shot.url);
+          // Prefer primary high-resolution url over downscaled displayUrl
+          addUrl(shot.url || shot.displayUrl);
         } catch (err) {
           toast(err.message, { type: "error" });
         }
@@ -2313,7 +2317,7 @@
     }
 
     function shotSrc(shot) {
-      return shot.displayUrl || shot.url || shot.dataUrl || "";
+      return shot.url || shot.displayUrl || shot.dataUrl || "";
     }
 
     function render() {
@@ -2385,8 +2389,8 @@
     const sessions = A.sessionList(model.settings);
     const defaultSetups = ["FVG", "Order Block", "Liquidity Sweep", "Breaker", "OTE", "MSS", "Displacement", "FVG + Sweep", "OB + Sweep", "Other"];
     const customSetups = (model.settings && (model.settings.customSetups || model.settings.custom_setups)) || [];
-    const existingTableSetups = (model.allTrades || model.tableTrades || []).map((t) => t.setup).filter(Boolean);
-    const allSetupOptions = Array.from(new Set([...defaultSetups, ...customSetups, ...existingTableSetups, draft.setup].filter(Boolean)));
+    const existingTableSetups = (model.allTrades || []).map((t) => (t && t.setup ? String(t.setup).trim() : "")).filter(Boolean);
+    const allSetupOptions = Array.from(new Set([...defaultSetups, ...customSetups, ...existingTableSetups, draft.setup ? String(draft.setup).trim() : ""].filter(Boolean)));
     const batches = A.batchList ? A.batchList(model.settings, model.allTrades) : [];
     const decimals = A.instrumentDecimals(base.instrument || "S&P500", model.settings);
 
@@ -2399,7 +2403,17 @@
           <div class="field"><label>Session</label><select name="session">${optionsHTML(sessions, draft.session, "—")}</select></div>
           <div class="field" data-wrap="instrument"><label>Instrument <b class="req">*</b></label><select name="instrument">${optionsHTML(instruments, draft.instrument, "Select…")}</select><div class="field-errors" data-errors="instrument"></div></div>
           <div class="field" data-wrap="direction"><label>Direction <b class="req">*</b></label><select name="direction">${optionsHTML(A.DEFAULTS.directions, draft.direction)}</select><div class="field-errors" data-errors="direction"></div></div>
-          <div class="field" data-wrap="setup"><label>Setup</label><input type="text" name="setup" list="setup-options" value="${esc(draft.setup || "")}" placeholder="Select or type setup…" autocomplete="off"><datalist id="setup-options">${allSetupOptions.map(s => `<option value="${esc(s)}"></option>`).join("")}</datalist><div class="field-errors" data-errors="setup"></div></div>
+          <div class="field" data-wrap="setup">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label>Setup</label>
+              <button type="button" class="btn-link" style="font-size:11px; color:var(--text-muted); cursor:pointer; background:none; border:none; text-decoration:underline;" onclick="window.ICT_UI?.openSettingsModal?.()">Manage setups</button>
+            </div>
+            <input type="text" name="setup" list="setup-options" value="${esc(draft.setup || "")}" placeholder="Select or type setup…" autocomplete="off">
+            <datalist id="setup-options">
+              ${allSetupOptions.map(s => `<option value="${esc(s)}"></option>`).join("")}
+            </datalist>
+            <div class="field-errors" data-errors="setup"></div>
+          </div>
           <div class="field" data-wrap="riskR"><label>Risk (R) <b class="req">*</b></label><input type="number" name="riskR" step="0.01" min="0.01" value="${esc(draft.riskR === null || draft.riskR === undefined ? "" : draft.riskR)}"><span class="hint">1R = normal risk · 0.5R = half risk</span><div class="field-errors" data-errors="riskR"></div></div>
         </div>
         <details class="collapsed-fields" data-optional-context style="margin-top:10px">
@@ -3156,7 +3170,7 @@
       const list = shots || [];
       if (extraCountEl) extraCountEl.textContent = list.length ? "· " + list.length : "";
       extraShotsEl.innerHTML = "";
-      if (list.length) list.forEach((shot) => addFigure(extraShotsEl, shot.displayUrl || shot.url || shot.dataUrl || "", shot.name || "Screenshot", shot));
+      if (list.length) list.forEach((shot) => addFigure(extraShotsEl, shot.url || shot.displayUrl || shot.dataUrl || "", shot.name || "Screenshot", shot));
       else extraShotsEl.innerHTML = '<p class="muted">No additional screenshots.</p>';
     }).catch(() => {
       if (extraCountEl) extraCountEl.textContent = "";
@@ -3890,7 +3904,8 @@
   }
 
   function beginInlineEdit(td, trade, field) {
-    if (!trade) return;
+    if (!trade || !td) return;
+    if (td.classList.contains("editing")) return;
     const original = td.innerHTML;
     const current = inlineRawValue(trade, field);
     let control;
@@ -3909,6 +3924,9 @@
     } else {
       control = h("input", { type: "text", class: "inline-editor", value: String(current) });
     }
+    control.addEventListener("click", (e) => e.stopPropagation());
+    control.addEventListener("mousedown", (e) => e.stopPropagation());
+
     td.classList.add("editing");
     td.innerHTML = "";
     td.appendChild(control);
@@ -3926,6 +3944,11 @@
       if (finished) return;
       finished = true;
       const raw = control.value;
+      if (String(raw).trim() === String(current).trim()) {
+        td.classList.remove("editing");
+        td.innerHTML = original;
+        return;
+      }
       const patch = {};
       if (field === "mfe" || field === "mae" || field === "pathComplete" || field === "waypoints") {
         const tp = Object.assign({}, trade.tradePath || {});
@@ -5542,12 +5565,14 @@
     });
 
     byId("trade-tbody").addEventListener("click", async (event) => {
+      if (event.target.closest("input[data-select], .select-cell")) return;
       const row = event.target.closest("tr[data-id]");
       if (!row) return;
       const trade = (model.tableTrades || []).find((t) => t.id === row.dataset.id);
       if (!trade) return;
       const actionEl = event.target.closest("[data-action]");
       if (actionEl) {
+        event.stopPropagation();
         const action = actionEl.dataset.action;
         if (action === "details") {
           openDetails(trade.id);
@@ -5583,8 +5608,14 @@
         return;
       }
       const td = event.target.closest("td[data-field]");
-      if (td && !event.target.closest("button, input, select, textarea, a")) {
+      if (td && !td.classList.contains("editing") && !event.target.closest("button, input, select, textarea, a, .inline-editor")) {
+        event.stopPropagation();
         beginInlineEdit(td, trade, td.dataset.field);
+        return;
+      }
+      if (!event.target.closest("button, input, select, textarea, a, .inline-editor, .editing")) {
+        event.stopPropagation();
+        openDetails(trade.id);
       }
     });
 
