@@ -2996,6 +2996,193 @@
     document.body.classList.remove("details-open");
   }
 
+  function openTradeLightbox(trade, initialSrc) {
+    if (!trade) return;
+    const entryUrls = A.screenshotUrls(trade, "entry");
+    const outcomeUrls = A.screenshotUrls(trade, "outcome");
+
+    const items = [];
+    entryUrls.forEach((u, i) => items.push({ label: entryUrls.length > 1 ? `Entry ${i + 1}` : "Entry", url: u }));
+    outcomeUrls.forEach((u, i) => items.push({ label: outcomeUrls.length > 1 ? `Outcome ${i + 1}` : "Outcome", url: u }));
+
+    if (initialSrc && !items.some((it) => it.url === initialSrc)) {
+      items.push({ label: "Screenshot", url: initialSrc });
+    }
+
+    if (!items.length) {
+      if (initialSrc) items.push({ label: "Screenshot", url: initialSrc });
+      else return;
+    }
+
+    let currentIndex = 0;
+    if (initialSrc) {
+      const idx = items.findIndex((it) => it.url === initialSrc);
+      if (idx !== -1) currentIndex = idx;
+    }
+
+    let zoom = 1;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+
+    const overlay = h("div", { class: "missed-lightbox-overlay" });
+    const head = h("div", { class: "missed-lightbox-head" });
+    const titleEl = h("div", { class: "missed-lightbox-title" });
+    const finalRStr = trade.finalR !== null && trade.finalR !== undefined ? (trade.finalR >= 0 ? `+${A.formatNumber(trade.finalR, 2)}R` : `${A.formatNumber(trade.finalR, 2)}R`) : "Open";
+    const rClass = trade.finalR > 0 ? "pos" : trade.finalR < 0 ? "neg" : "zero";
+    titleEl.innerHTML = `<span><b>Trade #${trade.tradeNumber || "—"}</b> · ${esc(trade.instrument || "")} ${esc(trade.direction || "")} · <span class="${rClass}">${finalRStr}</span> · <span class="muted">${esc(trade.setup || "")}</span></span>`;
+
+    const tfSwitcher = h("div", { class: "missed-tf-toggle" });
+    if (items.length > 1) {
+      tfSwitcher.innerHTML = items.map((it, idx) => `
+        <button type="button" class="missed-tf-btn${idx === currentIndex ? " active" : ""}" data-lb-idx="${idx}">${esc(it.label)}</button>
+      `).join("");
+    }
+
+    const controls = h("div", { class: "missed-lightbox-controls" });
+    const zoomInBtn = h("button", { type: "button", class: "missed-lightbox-btn", text: "Zoom +", title: "Zoom in" });
+    const zoomOutBtn = h("button", { type: "button", class: "missed-lightbox-btn", text: "Zoom −", title: "Zoom out" });
+    const zoomResetBtn = h("button", { type: "button", class: "missed-lightbox-btn", text: "1:1", title: "Reset zoom (Original resolution)" });
+    const closeBtn = h("button", { type: "button", class: "missed-lightbox-btn", text: "✕ Close", title: "Close (Esc)" });
+    controls.appendChild(zoomInBtn);
+    controls.appendChild(zoomOutBtn);
+    controls.appendChild(zoomResetBtn);
+    controls.appendChild(closeBtn);
+
+    head.appendChild(titleEl);
+    if (items.length > 1) head.appendChild(tfSwitcher);
+    head.appendChild(controls);
+
+    const body = h("div", { class: "missed-lightbox-body" });
+    const img = h("img", { class: "missed-lightbox-img", alt: "Trade Chart" });
+    body.appendChild(img);
+
+    let prevBtn = null;
+    let nextBtn = null;
+    if (items.length > 1) {
+      prevBtn = h("button", { type: "button", class: "missed-lightbox-arrow prev", text: "‹", title: "Previous (Left Arrow)" });
+      nextBtn = h("button", { type: "button", class: "missed-lightbox-arrow next", text: "›", title: "Next (Right Arrow)" });
+      body.appendChild(prevBtn);
+      body.appendChild(nextBtn);
+    }
+
+    const hint = h("div", { class: "missed-lightbox-hint", text: "Esc to close · Left/Right arrows to switch screenshots · Scroll to zoom · Drag to pan" });
+    body.appendChild(hint);
+
+    overlay.appendChild(head);
+    overlay.appendChild(body);
+    document.body.appendChild(overlay);
+
+    function updateTransform() {
+      img.style.transform = `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`;
+    }
+
+    function setImage() {
+      const it = items[currentIndex];
+      img.src = it ? it.url : "";
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+      updateTransform();
+      if (items.length > 1) {
+        tfSwitcher.querySelectorAll(".missed-tf-btn").forEach((btn) => {
+          btn.classList.toggle("active", Number(btn.dataset.lbIdx) === currentIndex);
+        });
+      }
+    }
+
+    function step(delta) {
+      if (items.length <= 1) return;
+      currentIndex = (currentIndex + delta + items.length) % items.length;
+      setImage();
+    }
+
+    if (tfSwitcher) {
+      tfSwitcher.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-lb-idx]");
+        if (btn) {
+          currentIndex = Number(btn.dataset.lbIdx);
+          setImage();
+        }
+      });
+    }
+
+    if (prevBtn) prevBtn.addEventListener("click", () => step(-1));
+    if (nextBtn) nextBtn.addEventListener("click", () => step(1));
+
+    zoomInBtn.addEventListener("click", () => {
+      zoom = Math.min(5, zoom + 0.3);
+      updateTransform();
+    });
+    zoomOutBtn.addEventListener("click", () => {
+      zoom = Math.max(0.4, zoom - 0.3);
+      updateTransform();
+    });
+    zoomResetBtn.addEventListener("click", () => {
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+      updateTransform();
+    });
+
+    body.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.2 : -0.2;
+      zoom = Math.min(5, Math.max(0.4, zoom + delta));
+      updateTransform();
+    }, { passive: false });
+
+    body.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".missed-lightbox-arrow, .missed-lightbox-controls, .missed-tf-toggle")) return;
+      isDragging = true;
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+      body.classList.add("is-dragging");
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (isDragging) {
+        isDragging = false;
+        body.classList.remove("is-dragging");
+      }
+    });
+
+    function close() {
+      window.removeEventListener("keydown", onKeyDown);
+      overlay.remove();
+    }
+
+    function onKeyDown(e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        step(-1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        step(1);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    closeBtn.addEventListener("click", close);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === body || e.target === overlay) close();
+    });
+
+    setImage();
+  }
+
   function renderDetails() {
     if (!detailsId) return;
     const trade = model.allTrades.find((t) => t.id === detailsId);
@@ -3152,11 +3339,7 @@
       const fig = h("figure", { class: "detail-shot" });
       const img = h("img", { src, alt: name, loading: "lazy" });
       img.addEventListener("click", () => {
-        openModal({
-          title: name,
-          size: "modal-xl max-w-7xl w-[90vw]",
-          body: `<div class="lightbox"><img src="${esc(src)}" alt="${esc(name)}" class="w-full h-auto max-h-[85vh] object-contain"></div>`,
-        });
+        openTradeLightbox(trade, src);
       });
       const cap = h("figcaption", { text: name });
       fig.appendChild(img);
