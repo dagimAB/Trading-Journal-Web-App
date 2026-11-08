@@ -2404,14 +2404,18 @@
           <div class="field" data-wrap="instrument"><label>Instrument <b class="req">*</b></label><select name="instrument">${optionsHTML(instruments, draft.instrument, "Select…")}</select><div class="field-errors" data-errors="instrument"></div></div>
           <div class="field" data-wrap="direction"><label>Direction <b class="req">*</b></label><select name="direction">${optionsHTML(A.DEFAULTS.directions, draft.direction)}</select><div class="field-errors" data-errors="direction"></div></div>
           <div class="field" data-wrap="setup">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <label>Setup</label>
-              <button type="button" class="btn-link" style="font-size:11px; color:var(--text-muted); cursor:pointer; background:none; border:none; text-decoration:underline;" onclick="window.ICT_UI?.openSettingsModal?.()">Manage setups</button>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <label for="setup-select">Setup</label>
+              <button type="button" id="btn-manage-setups-link" class="btn-link" style="font-size:11px; color:var(--accent, #6366f1); cursor:pointer; background:none; border:none; text-decoration:underline; padding:0;">Manage setups</button>
             </div>
-            <input type="text" name="setup" list="setup-options" value="${esc(draft.setup || "")}" placeholder="Select or type setup…" autocomplete="off">
-            <datalist id="setup-options">
-              ${allSetupOptions.map(s => `<option value="${esc(s)}"></option>`).join("")}
-            </datalist>
+            <select name="setup" id="setup-select" class="form-select">
+              <option value="">Select a setup…</option>
+              ${allSetupOptions.map((s) => `<option value="${esc(s)}"${s === (draft.setup || "") ? " selected" : ""}>${esc(s)}</option>`).join("")}
+              <option value="__new__">+ New Custom Setup…</option>
+            </select>
+            <div id="new-setup-input-wrap" style="display:none; margin-top:6px;">
+              <input type="text" id="new-setup-custom-input" placeholder="Type new custom setup (e.g. Bias + 15m OB)..." autocomplete="off" style="width:100%;">
+            </div>
             <div class="field-errors" data-errors="setup"></div>
           </div>
           <div class="field" data-wrap="riskR"><label>Risk (R) <b class="req">*</b></label><input type="number" name="riskR" step="0.01" min="0.01" value="${esc(draft.riskR === null || draft.riskR === undefined ? "" : draft.riskR)}"><span class="hint">1R = normal risk · 0.5R = half risk</span><div class="field-errors" data-errors="riskR"></div></div>
@@ -2609,15 +2613,27 @@
       if (timeInput.value) suggest();
     }
 
-    const setupInput = form.querySelector('[name="setup"]');
-    if (setupInput) {
-      const showSetupPicker = () => {
-        if (typeof setupInput.showPicker === "function") {
-          try { setupInput.showPicker(); } catch (_) {}
+    const setupSelect = form.querySelector("#setup-select");
+    const customWrap = form.querySelector("#new-setup-input-wrap");
+    const customInput = form.querySelector("#new-setup-custom-input");
+    if (setupSelect && customWrap) {
+      setupSelect.addEventListener("change", () => {
+        if (setupSelect.value === "__new__") {
+          customWrap.style.display = "block";
+          if (customInput) customInput.focus();
+        } else {
+          customWrap.style.display = "none";
         }
-      };
-      setupInput.addEventListener("click", showSetupPicker);
-      setupInput.addEventListener("focus", showSetupPicker);
+      });
+    }
+
+    const manageSetupsBtn = form.querySelector("#btn-manage-setups-link");
+    if (manageSetupsBtn) {
+      manageSetupsBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openSettingsModal();
+      });
     }
 
     let resultFields = null;
@@ -2832,7 +2848,13 @@
     next.killzone = get("killzone").value;
     next.instrument = get("instrument").value;
     next.direction = get("direction").value;
-    next.setup = get("setup").value;
+    const setupEl = get("setup");
+    let setupVal = setupEl ? setupEl.value : "";
+    if (setupVal === "__new__") {
+      const customInput = form.querySelector("#new-setup-custom-input");
+      setupVal = customInput ? customInput.value.trim() : "";
+    }
+    next.setup = setupVal || null;
     next.setupQuality = get("setupQuality").value;
     next.htfBias = get("htfBias").value;
     next.htfTimeframe = get("htfTimeframe").value;
@@ -5757,4 +5779,5 @@
       renderTable();
     },
   };
+  window.ICT_UI = window.ICT.ui;
 })();
