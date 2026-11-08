@@ -2174,8 +2174,15 @@
     }
 
     function addUrl(raw) {
-      const url = String(raw || "").trim();
-      if (!url || currentUrls.includes(url)) return false;
+      let url = String(raw || "").trim();
+      if (!url) return false;
+      const tvMatch = url.match(/(?:https?:\/\/)?(?:www\.)?tradingview\.com\/x\/([a-zA-Z0-9]+)/i);
+      if (tvMatch) {
+        const id = tvMatch[1];
+        const c = id.charAt(0).toLowerCase();
+        url = `https://s3.tradingview.com/snapshots/${c}/${id}.png`;
+      }
+      if (currentUrls.includes(url)) return false;
       currentUrls.push(url);
       render();
       return true;
@@ -3056,7 +3063,17 @@
     head.appendChild(controls);
 
     const body = h("div", { class: "missed-lightbox-body" });
-    const img = h("img", { class: "missed-lightbox-img", alt: "Trade Chart" });
+    const img = h("img", {
+      class: "missed-lightbox-img",
+      alt: "Trade Chart",
+      style: {
+        width: "92vw",
+        height: "82vh",
+        maxWidth: "95vw",
+        maxHeight: "85vh",
+        objectFit: "contain",
+      },
+    });
     body.appendChild(img);
 
     let prevBtn = null;
@@ -5012,7 +5029,17 @@
     head.appendChild(controls);
 
     const body = h("div", { class: "missed-lightbox-body" });
-    const img = h("img", { class: "missed-lightbox-img", alt: "Missed Trade Chart" });
+    const img = h("img", {
+      class: "missed-lightbox-img",
+      alt: "Missed Trade Chart",
+      style: {
+        width: "92vw",
+        height: "82vh",
+        maxWidth: "95vw",
+        maxHeight: "85vh",
+        objectFit: "contain",
+      },
+    });
     body.appendChild(img);
 
     let prevBtn = null;

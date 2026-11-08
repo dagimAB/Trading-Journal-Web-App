@@ -4300,6 +4300,8 @@ body.profile-view #btn-new-trade {
 }
 
 .missed-lightbox-img {
+  width: 92vw;
+  height: 82vh;
   max-width: 95vw;
   max-height: 85vh;
   object-fit: contain;
